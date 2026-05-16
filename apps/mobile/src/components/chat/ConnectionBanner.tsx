@@ -1,9 +1,12 @@
-import { Pressable, View } from "react-native";
+import { FontAwesome } from "@expo/vector-icons";
+import { Linking, Pressable, View } from "react-native";
 import Animated, { FadeIn, FadeOut, LinearTransition } from "react-native-reanimated";
 import { StyleSheet } from "react-native-unistyles";
 
 import { ThemedText } from "@/components/themed-text";
 import { Button } from "@/components/ui/button";
+import { codexRelayRepositoryUrl } from "@/constants/links";
+import { useTheme } from "@/hooks/use-theme";
 
 export function ConnectionBanner({
   connection,
@@ -24,6 +27,7 @@ export function ConnectionBanner({
   serverUrl: string;
   workspacePath?: string;
 }) {
+  const theme = useTheme();
   const isConnected = connection === "connected";
   const statusText = isConnected
     ? `Connected · ${workspaceName(workspacePath) ?? compactServer(serverUrl)}`
@@ -114,6 +118,10 @@ export function ConnectionBanner({
             <ThemedText type="smallBold" style={styles.commandText}>
               npx codex-relay@latest
             </ThemedText>
+            <ThemedText type="small" themeColor="textSecondary" style={styles.commandHint}>
+              Keep this phone and computer on the same Wi-Fi. If not, connect both with Tailscale
+              first.
+            </ThemedText>
           </View>
           <View style={styles.pairActions}>
             <Button
@@ -153,6 +161,36 @@ export function ConnectionBanner({
               </ThemedText>
             </Pressable>
           </View>
+          <Pressable
+            accessibilityRole="link"
+            accessibilityLabel="Open Codex Relay GitHub repository"
+            onPress={() => void Linking.openURL(codexRelayRepositoryUrl)}
+            style={({ pressed }) => [
+              styles.repositoryLink,
+              { backgroundColor: theme.backgroundSelected, borderColor: theme.backgroundSelected },
+              pressed && styles.pressed,
+            ]}
+          >
+            <View
+              style={[
+                styles.repositoryIcon,
+                {
+                  backgroundColor: theme.backgroundElement,
+                  borderColor: theme.backgroundSelected,
+                },
+              ]}
+            >
+              <FontAwesome name="github" size={16} color={theme.text} />
+            </View>
+            <View style={styles.repositoryCopy}>
+              <ThemedText type="smallBold" style={[styles.repositoryTitle, { color: theme.text }]}>
+                Codex Relay on GitHub
+              </ThemedText>
+            </View>
+            <View style={[styles.repositoryStar, { backgroundColor: theme.backgroundElement }]}>
+              <FontAwesome name="star" size={12} color={theme.text} />
+            </View>
+          </Pressable>
         </Animated.View>
       </Animated.View>
     );
@@ -269,9 +307,14 @@ const styles = StyleSheet.create({
     lineHeight: 14,
   },
   commandText: {
-    fontFamily: "SpaceMono",
+    fontFamily: "GeistMono",
     fontSize: 13,
     lineHeight: 17,
+  },
+  commandHint: {
+    fontSize: 12,
+    lineHeight: 16,
+    paddingTop: 3,
   },
   pairActions: {
     gap: 8,
@@ -296,6 +339,39 @@ const styles = StyleSheet.create({
   refreshText: {
     fontSize: 12,
     lineHeight: 16,
+  },
+  repositoryLink: {
+    alignItems: "center",
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 10,
+    minHeight: 46,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  repositoryIcon: {
+    alignItems: "center",
+    borderRadius: 15,
+    borderWidth: StyleSheet.hairlineWidth,
+    height: 30,
+    justifyContent: "center",
+    width: 30,
+  },
+  repositoryCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  repositoryTitle: {
+    fontSize: 12,
+    lineHeight: 15,
+  },
+  repositoryStar: {
+    alignItems: "center",
+    borderRadius: 12,
+    height: 24,
+    justifyContent: "center",
+    width: 24,
   },
   pressed: {
     opacity: 0.7,

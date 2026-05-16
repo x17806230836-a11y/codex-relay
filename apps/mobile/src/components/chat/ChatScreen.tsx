@@ -52,7 +52,7 @@ import {
 import { ThemedText } from "@/components/themed-text";
 import { Button } from "@/components/ui/button";
 import { Colors, Spacing } from "@/constants/theme";
-import { codexRelayRepositoryLabel, codexRelayRepositoryUrl } from "@/constants/links";
+import { codexRelayRepositoryUrl } from "@/constants/links";
 import {
   getCodexRelayServerUrl,
   hasCodexRelaySession,
@@ -1203,8 +1203,8 @@ export function ChatScreen() {
         setPasteApprovalServerUrl(undefined);
         hapticSuccess();
         await refresh();
-      } catch (caught) {
-        Alert.alert("Pairing failed", errorMessage(caught));
+      } catch {
+        Alert.alert("Pairing failed", pairingFailureAlertMessage);
       } finally {
         isHandlingPairingLink = false;
         setPastePairing(false);
@@ -1296,14 +1296,10 @@ export function ChatScreen() {
         setPasteApprovalCode(undefined);
         setPasteApprovalServerUrl(undefined);
         const isInvalidPairingQr = isPairingQrPayloadError(caught);
-        setScannerMessage(
-          isInvalidPairingQr
-            ? "Invalid QR code. Scan the server pairing QR or paste the payload."
-            : "Pairing failed. Try the QR again or paste the payload.",
-        );
+        setScannerMessage(scannerPairingFailureMessage(caught));
         Alert.alert(
           isInvalidPairingQr ? "Invalid QR code" : "Pairing failed",
-          errorMessage(caught),
+          isInvalidPairingQr ? invalidPairingQrAlertMessage : pairingFailureAlertMessage,
         );
       }
     },
@@ -2244,10 +2240,13 @@ export function ChatScreen() {
                 onPress={() => void Linking.openURL(codexRelayRepositoryUrl)}
                 style={({ pressed }) => [styles.scannerRepositoryLink, pressed && styles.pressed]}
               >
-                <FontAwesome name="github" size={15} color={Colors.dark.text} />
+                <View style={styles.scannerRepositoryIcon}>
+                  <FontAwesome name="github" size={14} color={Colors.dark.text} />
+                </View>
                 <ThemedText type="smallBold" style={styles.scannerRepositoryText}>
-                  {codexRelayRepositoryLabel}
+                  Star on GitHub
                 </ThemedText>
+                <FontAwesome name="star" size={11} color={Colors.dark.text} />
               </Pressable>
               <Pressable
                 accessibilityRole="button"
@@ -2535,6 +2534,18 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Unable to reach the Codex Relay server.";
 }
 
+function scannerPairingFailureMessage(error: unknown) {
+  return isPairingQrPayloadError(error)
+    ? "This is not the Codex Relay QR. Scan the QR shown on your computer."
+    : "Could not connect. Use the same Wi-Fi or turn on Tailscale, then scan again.";
+}
+
+const invalidPairingQrAlertMessage =
+  "Run npx codex-relay@latest on your computer, then scan the QR shown there.";
+
+const pairingFailureAlertMessage =
+  "Use the same Wi-Fi on your phone and computer. If that is not possible, turn on Tailscale on both devices and scan again.";
+
 async function safeAsyncValue<T>(callback: () => Promise<T>) {
   try {
     return await callback();
@@ -2646,7 +2657,7 @@ const styles = StyleSheet.create({
   },
   scannerFooter: {
     alignItems: "center",
-    gap: Spacing.two,
+    gap: Spacing.three,
     paddingBottom: Spacing.four,
     paddingHorizontal: Spacing.four,
   },
@@ -2668,15 +2679,25 @@ const styles = StyleSheet.create({
   },
   scannerRepositoryLink: {
     alignItems: "center",
-    backgroundColor: "rgba(42, 42, 42, 0.78)",
-    borderColor: "rgba(255, 255, 255, 0.16)",
+    backgroundColor: Colors.dark.backgroundSelected,
+    borderColor: "rgba(255, 255, 255, 0.14)",
     borderRadius: 18,
     borderWidth: 1,
     flexDirection: "row",
-    gap: Spacing.two,
+    gap: 7,
     maxWidth: "100%",
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
+    minHeight: 34,
+    paddingLeft: 5,
+    paddingRight: Spacing.three,
+    paddingVertical: 4,
+  },
+  scannerRepositoryIcon: {
+    alignItems: "center",
+    backgroundColor: Colors.dark.backgroundElement,
+    borderRadius: 13,
+    height: 26,
+    justifyContent: "center",
+    width: 26,
   },
   scannerRepositoryText: {
     color: Colors.dark.text,

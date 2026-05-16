@@ -3,11 +3,7 @@ import { expo } from "@hot-updater/expo";
 import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
 
-
-
 config({ path: ".env.hotupdater" });
-
-
 
 export default defineConfig({
   build: expo(),

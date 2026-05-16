@@ -1,12 +1,12 @@
-import type { ThreadSummary } from "codex-relay/api-schema";
+import { FontAwesome } from "@expo/vector-icons";
 import { LegendList, type LegendListRenderItemProps } from "@legendapp/list/react-native";
 import { useSelector } from "@legendapp/state/react";
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { FontAwesome } from "@expo/vector-icons";
+import type { ThreadSummary } from "codex-relay/api-schema";
 import { router } from "expo-router";
 import type { Drawer } from "expo-router/drawer";
-import { memo, useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import type { ComponentProps } from "react";
+import { memo, useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import {
   Alert,
   InteractionManager,
@@ -18,7 +18,6 @@ import {
   View,
   type ViewStyle,
 } from "react-native";
-import { StyleSheet } from "react-native-unistyles";
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -27,12 +26,13 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { StyleSheet } from "react-native-unistyles";
 
-import { Button } from "@/components/ui/button";
 import { SheetActionRow } from "@/components/ui/bottom-sheet";
+import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { Text } from "@/components/ui/text";
-import { codexRelayRepositoryLabel, codexRelayRepositoryUrl } from "@/constants/links";
+import { codexRelayRepositoryUrl } from "@/constants/links";
 import { useTheme } from "@/hooks/use-theme";
 import { hasCodexRelaySession } from "@/lib/codex-relay-api";
 import { hapticLightImpact, hapticSelection, hapticSuccess } from "@/lib/haptics";
@@ -686,10 +686,7 @@ function DrawerFooter({
               <FontAwesome name="github" size={16} color={theme.text} />
             </View>
             <View style={[styles.repositoryFooterCopy, pressed && styles.drawerPressedContent]}>
-              <Text style={styles.repositoryFooterTitle}>GitHub</Text>
-              <Text numberOfLines={1} style={styles.repositoryFooterUrl}>
-                {codexRelayRepositoryLabel}
-              </Text>
+              <Text style={styles.repositoryFooterTitle}>Codex Relay on GitHub</Text>
             </View>
           </>
         )}
@@ -1707,11 +1704,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
     lineHeight: 16,
-  },
-  repositoryFooterUrl: {
-    fontSize: 10,
-    lineHeight: 14,
-    opacity: 0.62,
   },
   workspaceDisabled: {
     opacity: 0.42,
