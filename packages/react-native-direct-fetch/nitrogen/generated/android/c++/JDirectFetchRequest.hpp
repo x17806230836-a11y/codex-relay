@@ -10,8 +10,11 @@
 #include <fbjni/fbjni.h>
 #include "DirectFetchRequest.hpp"
 
+#include "DirectFetchFormDataPart.hpp"
+#include "JDirectFetchFormDataPart.hpp"
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace margelo::nitro::directfetch {
 
@@ -40,6 +43,8 @@ namespace margelo::nitro::directfetch {
       jni::local_ref<jni::JString> headersJson = this->getFieldValue(fieldHeadersJson);
       static const auto fieldBodyString = clazz->getField<jni::JString>("bodyString");
       jni::local_ref<jni::JString> bodyString = this->getFieldValue(fieldBodyString);
+      static const auto fieldBodyFormData = clazz->getField<jni::JArrayClass<JDirectFetchFormDataPart>>("bodyFormData");
+      jni::local_ref<jni::JArrayClass<JDirectFetchFormDataPart>> bodyFormData = this->getFieldValue(fieldBodyFormData);
       static const auto fieldTimeoutMs = clazz->getField<jni::JDouble>("timeoutMs");
       jni::local_ref<jni::JDouble> timeoutMs = this->getFieldValue(fieldTimeoutMs);
       return DirectFetchRequest(
@@ -47,6 +52,16 @@ namespace margelo::nitro::directfetch {
         method != nullptr ? std::make_optional(method->toStdString()) : std::nullopt,
         headersJson != nullptr ? std::make_optional(headersJson->toStdString()) : std::nullopt,
         bodyString != nullptr ? std::make_optional(bodyString->toStdString()) : std::nullopt,
+        bodyFormData != nullptr ? std::make_optional([&](auto&& __input) {
+          size_t __size = __input->size();
+          std::vector<DirectFetchFormDataPart> __vector;
+          __vector.reserve(__size);
+          for (size_t __i = 0; __i < __size; __i++) {
+            auto __element = __input->getElement(__i);
+            __vector.push_back(__element->toCpp());
+          }
+          return __vector;
+        }(bodyFormData)) : std::nullopt,
         timeoutMs != nullptr ? std::make_optional(timeoutMs->value()) : std::nullopt
       );
     }
@@ -57,7 +72,7 @@ namespace margelo::nitro::directfetch {
      */
     [[maybe_unused]]
     static jni::local_ref<JDirectFetchRequest::javaobject> fromCpp(const DirectFetchRequest& value) {
-      using JSignature = JDirectFetchRequest(jni::alias_ref<jni::JString>, jni::alias_ref<jni::JString>, jni::alias_ref<jni::JString>, jni::alias_ref<jni::JString>, jni::alias_ref<jni::JDouble>);
+      using JSignature = JDirectFetchRequest(jni::alias_ref<jni::JString>, jni::alias_ref<jni::JString>, jni::alias_ref<jni::JString>, jni::alias_ref<jni::JString>, jni::alias_ref<jni::JArrayClass<JDirectFetchFormDataPart>>, jni::alias_ref<jni::JDouble>);
       static const auto clazz = javaClassStatic();
       static const auto create = clazz->getStaticMethod<JSignature>("fromCpp");
       return create(
@@ -66,6 +81,16 @@ namespace margelo::nitro::directfetch {
         value.method.has_value() ? jni::make_jstring(value.method.value()) : nullptr,
         value.headersJson.has_value() ? jni::make_jstring(value.headersJson.value()) : nullptr,
         value.bodyString.has_value() ? jni::make_jstring(value.bodyString.value()) : nullptr,
+        value.bodyFormData.has_value() ? [&](auto&& __input) {
+          size_t __size = __input.size();
+          jni::local_ref<jni::JArrayClass<JDirectFetchFormDataPart>> __array = jni::JArrayClass<JDirectFetchFormDataPart>::newArray(__size);
+          for (size_t __i = 0; __i < __size; __i++) {
+            const auto& __element = __input[__i];
+            auto __elementJni = JDirectFetchFormDataPart::fromCpp(__element);
+            __array->setElement(__i, *__elementJni);
+          }
+          return __array;
+        }(value.bodyFormData.value()) : nullptr,
         value.timeoutMs.has_value() ? jni::JDouble::valueOf(value.timeoutMs.value()) : nullptr
       );
     }

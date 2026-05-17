@@ -5,11 +5,20 @@ export interface DirectFetchHeader {
   value: string;
 }
 
+export interface DirectFetchFormDataPart {
+  name: string;
+  value?: string;
+  fileUri?: string;
+  fileName?: string;
+  mimeType?: string;
+}
+
 export interface DirectFetchRequest {
   url: string;
   method?: string;
   headersJson?: string;
   bodyString?: string;
+  bodyFormData?: DirectFetchFormDataPart[];
   timeoutMs?: number;
 }
 

@@ -18,7 +18,7 @@ public extension DirectFetchRequest {
   /**
    * Create a new instance of `DirectFetchRequest`.
    */
-  init(url: String, method: String?, headersJson: String?, bodyString: String?, timeoutMs: Double?) {
+  init(url: String, method: String?, headersJson: String?, bodyString: String?, bodyFormData: [DirectFetchFormDataPart]?, timeoutMs: Double?) {
     self.init(std.string(url), { () -> bridge.std__optional_std__string_ in
       if let __unwrappedValue = method {
         return bridge.create_std__optional_std__string_(std.string(__unwrappedValue))
@@ -34,6 +34,18 @@ public extension DirectFetchRequest {
     }(), { () -> bridge.std__optional_std__string_ in
       if let __unwrappedValue = bodyString {
         return bridge.create_std__optional_std__string_(std.string(__unwrappedValue))
+      } else {
+        return .init()
+      }
+    }(), { () -> bridge.std__optional_std__vector_DirectFetchFormDataPart__ in
+      if let __unwrappedValue = bodyFormData {
+        return bridge.create_std__optional_std__vector_DirectFetchFormDataPart__({ () -> bridge.std__vector_DirectFetchFormDataPart_ in
+          var __vector = bridge.create_std__vector_DirectFetchFormDataPart_(__unwrappedValue.count)
+          for __item in __unwrappedValue {
+            __vector.push_back(__item)
+          }
+          return __vector
+        }())
       } else {
         return .init()
       }
@@ -81,6 +93,18 @@ public extension DirectFetchRequest {
       if bridge.has_value_std__optional_std__string_(self.__bodyString) {
         let __unwrapped = bridge.get_std__optional_std__string_(self.__bodyString)
         return String(__unwrapped)
+      } else {
+        return nil
+      }
+    }()
+  }
+  
+  @inline(__always)
+  var bodyFormData: [DirectFetchFormDataPart]? {
+    return { () -> [DirectFetchFormDataPart]? in
+      if bridge.has_value_std__optional_std__vector_DirectFetchFormDataPart__(self.__bodyFormData) {
+        let __unwrapped = bridge.get_std__optional_std__vector_DirectFetchFormDataPart__(self.__bodyFormData)
+        return __unwrapped.map({ __item in __item })
       } else {
         return nil
       }

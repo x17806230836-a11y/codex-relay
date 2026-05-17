@@ -330,7 +330,7 @@ function shouldUseDirectFetch(url: string, init?: NetworkRequestInit) {
   if (Platform.OS !== "ios") {
     return false;
   }
-  if (init?.body !== undefined && typeof init.body !== "string") {
+  if (!isDirectFetchSupportedBody(init?.body)) {
     return false;
   }
 
@@ -347,6 +347,25 @@ function shouldUseDirectFetch(url: string, init?: NetworkRequestInit) {
   } catch {
     return false;
   }
+}
+
+function isDirectFetchSupportedBody(body: NetworkRequestInit["body"] | undefined) {
+  if (body == null || typeof body === "string") {
+    return true;
+  }
+  if (typeof FormData !== "undefined" && body instanceof FormData) {
+    return true;
+  }
+  if (typeof URLSearchParams !== "undefined" && body instanceof URLSearchParams) {
+    return true;
+  }
+  if (typeof Blob !== "undefined" && body instanceof Blob) {
+    return true;
+  }
+  if (body instanceof ArrayBuffer || ArrayBuffer.isView(body)) {
+    return true;
+  }
+  return false;
 }
 
 function isLocalhostUrl(url: string) {

@@ -1,4 +1,3 @@
-import { FontAwesome } from "@expo/vector-icons";
 import { LegendList, type LegendListRenderItemProps } from "@legendapp/list/react-native";
 import { useSelector } from "@legendapp/state/react";
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
@@ -28,6 +27,7 @@ import Animated, {
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet } from "react-native-unistyles";
 
+import { FaGithub } from "@/assets/icons/fa";
 import { SheetActionRow } from "@/components/ui/bottom-sheet";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
@@ -683,7 +683,7 @@ function DrawerFooter({
         {({ pressed }) => (
           <>
             <View style={[styles.rowIconSlot, pressed && styles.drawerPressedContent]}>
-              <FontAwesome name="github" size={16} color={theme.text} />
+              <FaGithub size={16} color={theme.text} />
             </View>
             <View style={[styles.repositoryFooterCopy, pressed && styles.drawerPressedContent]}>
               <Text style={styles.repositoryFooterTitle}>Codex Relay on GitHub</Text>

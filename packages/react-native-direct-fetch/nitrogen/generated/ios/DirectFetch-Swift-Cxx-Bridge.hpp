@@ -10,6 +10,8 @@
 // Forward declarations of C++ defined types
 // Forward declaration of `DirectFetchDownloadResponse` to properly resolve imports.
 namespace margelo::nitro::directfetch { struct DirectFetchDownloadResponse; }
+// Forward declaration of `DirectFetchFormDataPart` to properly resolve imports.
+namespace margelo::nitro::directfetch { struct DirectFetchFormDataPart; }
 // Forward declaration of `DirectFetchResponse` to properly resolve imports.
 namespace margelo::nitro::directfetch { struct DirectFetchResponse; }
 // Forward declaration of `DirectFetchStreamChunk` to properly resolve imports.
@@ -23,6 +25,7 @@ namespace DirectFetch { class HybridDirectFetchSpec_cxx; }
 
 // Include C++ defined types
 #include "DirectFetchDownloadResponse.hpp"
+#include "DirectFetchFormDataPart.hpp"
 #include "DirectFetchResponse.hpp"
 #include "DirectFetchStreamChunk.hpp"
 #include "HybridDirectFetchSpec.hpp"
@@ -34,6 +37,7 @@ namespace DirectFetch { class HybridDirectFetchSpec_cxx; }
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 /**
  * Contains specialized versions of C++ templated types so they can be accessed from Swift,
@@ -109,6 +113,32 @@ namespace margelo::nitro::directfetch::bridge::swift {
     return optional.has_value();
   }
   inline std::string get_std__optional_std__string_(const std::optional<std::string>& optional) noexcept {
+    return optional.value();
+  }
+  
+  // pragma MARK: std::vector<DirectFetchFormDataPart>
+  /**
+   * Specialized version of `std::vector<DirectFetchFormDataPart>`.
+   */
+  using std__vector_DirectFetchFormDataPart_ = std::vector<DirectFetchFormDataPart>;
+  inline std::vector<DirectFetchFormDataPart> create_std__vector_DirectFetchFormDataPart_(size_t size) noexcept {
+    std::vector<DirectFetchFormDataPart> vector;
+    vector.reserve(size);
+    return vector;
+  }
+  
+  // pragma MARK: std::optional<std::vector<DirectFetchFormDataPart>>
+  /**
+   * Specialized version of `std::optional<std::vector<DirectFetchFormDataPart>>`.
+   */
+  using std__optional_std__vector_DirectFetchFormDataPart__ = std::optional<std::vector<DirectFetchFormDataPart>>;
+  inline std::optional<std::vector<DirectFetchFormDataPart>> create_std__optional_std__vector_DirectFetchFormDataPart__(const std::vector<DirectFetchFormDataPart>& value) noexcept {
+    return std::optional<std::vector<DirectFetchFormDataPart>>(value);
+  }
+  inline bool has_value_std__optional_std__vector_DirectFetchFormDataPart__(const std::optional<std::vector<DirectFetchFormDataPart>>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline std::vector<DirectFetchFormDataPart> get_std__optional_std__vector_DirectFetchFormDataPart__(const std::optional<std::vector<DirectFetchFormDataPart>>& optional) noexcept {
     return optional.value();
   }
   

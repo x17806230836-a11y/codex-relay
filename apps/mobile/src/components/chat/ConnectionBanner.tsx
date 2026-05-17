@@ -1,8 +1,9 @@
-import { FontAwesome } from "@expo/vector-icons";
+import { Star } from "lucide-react-native";
 import { Linking, Pressable, View } from "react-native";
 import Animated, { FadeIn, FadeOut, LinearTransition } from "react-native-reanimated";
 import { StyleSheet } from "react-native-unistyles";
 
+import { FaGithub } from "@/assets/icons/fa";
 import { ThemedText } from "@/components/themed-text";
 import { Button } from "@/components/ui/button";
 import { codexRelayRepositoryUrl } from "@/constants/links";
@@ -180,7 +181,7 @@ export function ConnectionBanner({
                 },
               ]}
             >
-              <FontAwesome name="github" size={16} color={theme.text} />
+              <FaGithub size={16} color={theme.text} />
             </View>
             <View style={styles.repositoryCopy}>
               <ThemedText type="smallBold" style={[styles.repositoryTitle, { color: theme.text }]}>
@@ -188,7 +189,7 @@ export function ConnectionBanner({
               </ThemedText>
             </View>
             <View style={[styles.repositoryStar, { backgroundColor: theme.backgroundElement }]}>
-              <FontAwesome name="star" size={12} color={theme.text} />
+              <Star size={12} color={theme.text} fill={theme.text} />
             </View>
           </Pressable>
         </Animated.View>

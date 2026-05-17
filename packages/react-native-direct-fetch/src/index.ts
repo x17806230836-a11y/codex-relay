@@ -2,6 +2,7 @@ import { NitroModules } from "react-native-nitro-modules";
 import type {
   DirectFetch as DirectFetchSpec,
   DirectFetchDownloadRequest as NativeDirectFetchDownloadRequest,
+  DirectFetchFormDataPart,
   DirectFetchDownloadResponse as NativeDirectFetchDownloadResponse,
   DirectFetchRequest as NativeDirectFetchRequest,
   DirectFetchResponse as NativeDirectFetchResponse,
@@ -70,6 +71,7 @@ export async function dfetchStream(
       method: request.method,
       headersJson: JSON.stringify(request.headers ?? []),
       bodyString: request.bodyString,
+      bodyFormData: request.bodyFormData,
       timeoutMs: request.timeoutMs,
     },
     (chunk: DirectFetchStreamChunk) => {
@@ -112,6 +114,7 @@ async function fetchDirect(request: DirectFetchRequest): Promise<DirectFetchResp
     method: request.method,
     headersJson: JSON.stringify(request.headers ?? []),
     bodyString: request.bodyString,
+    bodyFormData: request.bodyFormData,
     timeoutMs: request.timeoutMs,
   });
   return {
@@ -139,14 +142,18 @@ async function normalizeRequest(
   const url = request?.url ?? input.toString();
   const method = init?.method ?? request?.method ?? "GET";
   const headers = directFetchHeaders(request?.headers, init?.headers);
-  const bodyString = await normalizeBody(
-    init?.body ?? (request ? await request.text() : undefined),
-  );
+  const body = await normalizeBody(init?.body ?? (request ? await request.text() : undefined));
+  const requestHeaders = body?.bodyFormData
+    ? headers.filter((header) => {
+        const key = header.key.toLowerCase();
+        return key !== "content-type" && key !== "content-length";
+      })
+    : headers;
   return {
     url,
     method,
-    headers,
-    bodyString,
+    headers: requestHeaders,
+    ...body,
     timeoutMs: init?.timeoutMs ?? 30000,
   };
 }
@@ -155,28 +162,126 @@ function isRequest(input: RequestInfo | URL): input is Request {
   return typeof Request !== "undefined" && input instanceof Request;
 }
 
-async function normalizeBody(body: BodyInit | null | undefined): Promise<string | undefined> {
+async function normalizeBody(
+  body: BodyInit | null | undefined,
+): Promise<
+  | {
+      bodyString?: string;
+      bodyFormData?: DirectFetchFormDataPart[];
+    }
+  | undefined
+> {
   if (body == null) {
     return undefined;
   }
   if (typeof body === "string") {
-    return body;
+    return { bodyString: body };
+  }
+  if (isFormData(body)) {
+    return { bodyFormData: serializeFormData(body) };
   }
   if (typeof URLSearchParams !== "undefined" && body instanceof URLSearchParams) {
-    return body.toString();
+    return { bodyString: body.toString() };
   }
   if (typeof Blob !== "undefined" && body instanceof Blob) {
-    return await body.text();
+    return { bodyString: await body.text() };
   }
   if (body instanceof ArrayBuffer) {
-    return new TextDecoder().decode(body);
+    return { bodyString: new TextDecoder().decode(body) };
   }
   if (ArrayBuffer.isView(body)) {
-    return new TextDecoder().decode(body);
+    return { bodyString: new TextDecoder().decode(body) };
   }
   throw new TypeError(
-    "dfetch currently supports string, URLSearchParams, Blob, and BufferSource bodies.",
+    "dfetch currently supports string, URLSearchParams, Blob, FormData, and BufferSource bodies.",
   );
+}
+
+function isFormData(body: unknown): body is FormData {
+  return (
+    (typeof FormData !== "undefined" && body instanceof FormData) ||
+    (typeof body === "object" &&
+      body !== null &&
+      typeof (body as { append?: unknown }).append === "function" &&
+      typeof (body as { getParts?: unknown }).getParts === "function")
+  );
+}
+
+function serializeFormData(formData: FormData): DirectFetchFormDataPart[] {
+  if (typeof (formData as { getParts?: unknown }).getParts === "function") {
+    return ((formData as unknown as { getParts: () => unknown[] }).getParts()).flatMap<
+      DirectFetchFormDataPart
+    >((part) => {
+      if (!part || typeof part !== "object") {
+        return [];
+      }
+      const rnPart = part as {
+        fieldName?: unknown;
+        fileName?: unknown;
+        headers?: Record<string, unknown>;
+        name?: unknown;
+        string?: unknown;
+        type?: unknown;
+        uri?: unknown;
+      };
+      const fieldName = rnPart.fieldName ?? multipartDispositionValue(rnPart.headers, "name");
+      const name = String(fieldName ?? "");
+      if (!name) {
+        return [];
+      }
+      if (rnPart.string !== undefined) {
+        return [{ name, value: String(rnPart.string) }];
+      }
+      if (typeof rnPart.uri === "string") {
+        const fileName =
+          rnPart.fileName ?? rnPart.name ?? multipartDispositionValue(rnPart.headers, "filename");
+        return [
+          {
+            name,
+            fileUri: rnPart.uri,
+            fileName: String(fileName ?? "file"),
+            mimeType: String(rnPart.type ?? "application/octet-stream"),
+          },
+        ];
+      }
+      return [];
+    });
+  }
+
+  const parts: DirectFetchFormDataPart[] = [];
+  formData.forEach((value, name) => {
+    if (typeof value === "string") {
+      parts.push({ name, value });
+      return;
+    }
+    const file = value as Blob & {
+      fileName?: string;
+      name?: string;
+      mimeType?: string;
+      type?: string;
+      uri?: string;
+    };
+    if (typeof file.uri === "string") {
+      parts.push({
+        name,
+        fileUri: file.uri,
+        fileName: file.name ?? file.fileName ?? "file",
+        mimeType: file.type ?? file.mimeType ?? "application/octet-stream",
+      });
+    }
+  });
+  return parts;
+}
+
+function multipartDispositionValue(
+  headers: Record<string, unknown> | undefined,
+  key: "filename" | "name",
+) {
+  const disposition = headers?.["content-disposition"];
+  if (typeof disposition !== "string") {
+    return undefined;
+  }
+  return new RegExp(`${key}="([^"]*)"`).exec(disposition)?.[1];
 }
 
 function directFetchHeaders(...inputs: Array<HeadersInit | undefined>): DirectFetchHeader[] {

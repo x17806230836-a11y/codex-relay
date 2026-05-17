@@ -3,15 +3,18 @@ package com.directfetch
 import com.margelo.nitro.core.Promise
 import com.margelo.nitro.directfetch.DirectFetchDownloadRequest
 import com.margelo.nitro.directfetch.DirectFetchDownloadResponse
+import com.margelo.nitro.directfetch.DirectFetchFormDataPart
 import com.margelo.nitro.directfetch.DirectFetchRequest
 import com.margelo.nitro.directfetch.DirectFetchResponse
 import com.margelo.nitro.directfetch.DirectFetchStreamChunk
 import com.margelo.nitro.directfetch.HybridDirectFetchSpec
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.net.URI
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.UUID
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -67,12 +70,7 @@ class HybridDirectFetch: HybridDirectFetchSpec() {
         decodeHeaders(request.headersJson).forEach { (key, value) ->
             connection.setRequestProperty(key, value)
         }
-        request.bodyString?.let { body ->
-            connection.doOutput = true
-            connection.outputStream.use { stream ->
-                stream.write(body.toByteArray(Charsets.UTF_8))
-            }
-        }
+        applyRequestBody(connection, request)
 
         val status = connection.responseCode
         val finalUrl = connection.url.toString()
@@ -188,12 +186,7 @@ class HybridDirectFetch: HybridDirectFetchSpec() {
         decodeHeaders(request.headersJson).forEach { (key, value) ->
             connection.setRequestProperty(key, value)
         }
-        request.bodyString?.let { body ->
-            connection.doOutput = true
-            connection.outputStream.use { stream ->
-                stream.write(body.toByteArray(Charsets.UTF_8))
-            }
-        }
+        applyRequestBody(connection, request)
 
         val status = connection.responseCode
         val finalUrl = connection.url.toString()
@@ -259,6 +252,71 @@ class HybridDirectFetch: HybridDirectFetchSpec() {
             array.put(JSONObject().put("key", key).put("value", value))
         }
         return array.toString()
+    }
+
+    private fun applyRequestBody(connection: HttpURLConnection, request: DirectFetchRequest) {
+        val parts = request.bodyFormData
+        if (!parts.isNullOrEmpty()) {
+            val (body, contentType) = buildMultipartBody(parts)
+            connection.setRequestProperty("Content-Type", contentType)
+            connection.doOutput = true
+            connection.outputStream.use { stream ->
+                stream.write(body)
+            }
+            return
+        }
+
+        request.bodyString?.let { body ->
+            connection.doOutput = true
+            connection.outputStream.use { stream ->
+                stream.write(body.toByteArray(Charsets.UTF_8))
+            }
+        }
+    }
+
+    private fun buildMultipartBody(parts: Array<DirectFetchFormDataPart>): Pair<ByteArray, String> {
+        val boundary = "DirectFetch-${UUID.randomUUID()}"
+        val output = ByteArrayOutputStream()
+        parts.forEach { part ->
+            output.writeString("--$boundary\r\n")
+            val fileUri = part.fileUri
+            if (fileUri != null) {
+                val fileName = escapeMultipartValue(part.fileName ?: "file")
+                val mimeType = escapeMultipartValue(part.mimeType ?: "application/octet-stream")
+                output.writeString(
+                    "Content-Disposition: form-data; name=\"${escapeMultipartValue(part.name)}\"; filename=\"$fileName\"\r\n"
+                )
+                output.writeString("Content-Type: $mimeType\r\n\r\n")
+                output.write(readMultipartFile(fileUri))
+            } else {
+                output.writeString(
+                    "Content-Disposition: form-data; name=\"${escapeMultipartValue(part.name)}\"\r\n\r\n"
+                )
+                output.writeString(part.value ?: "")
+            }
+            output.writeString("\r\n")
+        }
+        output.writeString("--$boundary--\r\n")
+        return output.toByteArray() to "multipart/form-data; boundary=$boundary"
+    }
+
+    private fun readMultipartFile(uri: String): ByteArray {
+        if (uri.startsWith("http://") || uri.startsWith("https://")) {
+            return URL(uri).openStream().use { it.readBytes() }
+        }
+        return fileFromUri(uri).readBytes()
+    }
+
+    private fun ByteArrayOutputStream.writeString(value: String) {
+        write(value.toByteArray(Charsets.UTF_8))
+    }
+
+    private fun escapeMultipartValue(value: String): String {
+        return value
+            .replace("\\", "\\\\")
+            .replace("\"", "\\\"")
+            .replace("\r", "")
+            .replace("\n", "")
     }
 
     private fun fileFromUri(fileUri: String): File {

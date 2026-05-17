@@ -13,6 +13,8 @@ namespace margelo::nitro::directfetch { struct DirectFetchResponse; }
 namespace margelo::nitro::directfetch { struct DirectFetchDownloadResponse; }
 // Forward declaration of `DirectFetchRequest` to properly resolve imports.
 namespace margelo::nitro::directfetch { struct DirectFetchRequest; }
+// Forward declaration of `DirectFetchFormDataPart` to properly resolve imports.
+namespace margelo::nitro::directfetch { struct DirectFetchFormDataPart; }
 // Forward declaration of `DirectFetchDownloadRequest` to properly resolve imports.
 namespace margelo::nitro::directfetch { struct DirectFetchDownloadRequest; }
 // Forward declaration of `DirectFetchStreamChunk` to properly resolve imports.
@@ -28,6 +30,9 @@ namespace margelo::nitro::directfetch { struct DirectFetchStreamChunk; }
 #include "DirectFetchRequest.hpp"
 #include "JDirectFetchRequest.hpp"
 #include <optional>
+#include "DirectFetchFormDataPart.hpp"
+#include <vector>
+#include "JDirectFetchFormDataPart.hpp"
 #include "DirectFetchDownloadRequest.hpp"
 #include "JDirectFetchDownloadRequest.hpp"
 #include "DirectFetchStreamChunk.hpp"

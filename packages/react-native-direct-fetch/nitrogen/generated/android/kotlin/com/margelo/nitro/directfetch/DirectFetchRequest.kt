@@ -32,6 +32,9 @@ data class DirectFetchRequest(
   val bodyString: String?,
   @DoNotStrip
   @Keep
+  val bodyFormData: Array<DirectFetchFormDataPart>?,
+  @DoNotStrip
+  @Keep
   val timeoutMs: Double?
 ) {
   /* primary constructor */
@@ -43,6 +46,7 @@ data class DirectFetchRequest(
       && Objects.deepEquals(this.method, other.method)
       && Objects.deepEquals(this.headersJson, other.headersJson)
       && Objects.deepEquals(this.bodyString, other.bodyString)
+      && Objects.deepEquals(this.bodyFormData, other.bodyFormData)
       && Objects.deepEquals(this.timeoutMs, other.timeoutMs)
   }
 
@@ -52,6 +56,7 @@ data class DirectFetchRequest(
       method,
       headersJson,
       bodyString,
+      bodyFormData,
       timeoutMs
     ).contentDeepHashCode()
   }
@@ -64,8 +69,8 @@ data class DirectFetchRequest(
     @Keep
     @Suppress("unused")
     @JvmStatic
-    private fun fromCpp(url: String, method: String?, headersJson: String?, bodyString: String?, timeoutMs: Double?): DirectFetchRequest {
-      return DirectFetchRequest(url, method, headersJson, bodyString, timeoutMs)
+    private fun fromCpp(url: String, method: String?, headersJson: String?, bodyString: String?, bodyFormData: Array<DirectFetchFormDataPart>?, timeoutMs: Double?): DirectFetchRequest {
+      return DirectFetchRequest(url, method, headersJson, bodyString, bodyFormData, timeoutMs)
     }
   }
 }

@@ -185,7 +185,11 @@ class HybridDirectFetch: HybridDirectFetchSpec {
         for header in Self.decodeHeaders(request.headersJson) {
             urlRequest.setValue(header.value, forHTTPHeaderField: header.key)
         }
-        if let bodyString = request.bodyString {
+        if let parts = request.bodyFormData, !parts.isEmpty {
+            let (body, contentType) = try Self.buildMultipartBody(parts)
+            urlRequest.httpBody = body
+            urlRequest.setValue(contentType, forHTTPHeaderField: "Content-Type")
+        } else if let bodyString = request.bodyString {
             urlRequest.httpBody = Data(bodyString.utf8)
         }
 
@@ -299,7 +303,11 @@ class HybridDirectFetch: HybridDirectFetchSpec {
         for header in Self.decodeHeaders(request.headersJson) {
             urlRequest.setValue(header.value, forHTTPHeaderField: header.key)
         }
-        if let bodyString = request.bodyString {
+        if let parts = request.bodyFormData, !parts.isEmpty {
+            let (body, contentType) = try Self.buildMultipartBody(parts)
+            urlRequest.httpBody = body
+            urlRequest.setValue(contentType, forHTTPHeaderField: "Content-Type")
+        } else if let bodyString = request.bodyString {
             urlRequest.httpBody = Data(bodyString.utf8)
         }
 
@@ -368,7 +376,7 @@ class HybridDirectFetch: HybridDirectFetchSpec {
             throw Self.error(code: 4, message: "Invalid HTTP port for URL: \(request.url)")
         }
 
-        let requestData = Self.encodeHttpRequest(request, url: url, host: host)
+        let requestData = try Self.encodeHttpRequest(request, url: url, host: host)
         let responseData = try await Self.withTimeout(request.timeoutMs) {
             try await Self.sendRawHttpRequest(host: host, port: port, requestData: requestData)
         }
@@ -422,7 +430,7 @@ class HybridDirectFetch: HybridDirectFetchSpec {
             throw Self.error(code: 4, message: "Invalid HTTP port for URL: \(request.url)")
         }
 
-        let requestData = Self.encodeHttpRequest(request, url: url, host: host)
+        let requestData = try Self.encodeHttpRequest(request, url: url, host: host)
         return try await Self.withTimeout(request.timeoutMs) {
             try await Self.sendRawHttpStreamRequest(
                 host: host,
@@ -438,11 +446,13 @@ class HybridDirectFetch: HybridDirectFetchSpec {
         _ request: DirectFetchRequest,
         url: URL,
         host: String
-    ) -> Data {
+    ) throws -> Data {
+        let (body, additionalHeaders) = try Self.bodyData(for: request)
         return Self.encodeHttpRequest(
             method: request.method,
             headersJson: request.headersJson,
-            bodyString: request.bodyString,
+            body: body,
+            additionalHeaders: additionalHeaders,
             timeoutMs: request.timeoutMs,
             url: url,
             host: host
@@ -457,7 +467,8 @@ class HybridDirectFetch: HybridDirectFetchSpec {
         return Self.encodeHttpRequest(
             method: request.method,
             headersJson: request.headersJson,
-            bodyString: request.bodyString,
+            body: request.bodyString.map { Data($0.utf8) } ?? Data(),
+            additionalHeaders: [],
             timeoutMs: request.timeoutMs,
             url: url,
             host: host
@@ -467,7 +478,8 @@ class HybridDirectFetch: HybridDirectFetchSpec {
     private static func encodeHttpRequest(
         method requestMethod: String?,
         headersJson: String?,
-        bodyString: String?,
+        body: Data,
+        additionalHeaders: [(key: String, value: String)],
         timeoutMs _: Double?,
         url: URL,
         host: String
@@ -475,8 +487,11 @@ class HybridDirectFetch: HybridDirectFetchSpec {
         let method = (requestMethod ?? "GET").uppercased()
         let path = url.path.isEmpty ? "/" : url.path
         let target = url.query.map { "\(path)?\($0)" } ?? path
-        let body = bodyString.map { Data($0.utf8) } ?? Data()
         var headers = Self.decodeHeaders(headersJson)
+        for header in additionalHeaders {
+            headers.removeAll { $0.key.caseInsensitiveCompare(header.key) == .orderedSame }
+            headers.append(header)
+        }
 
         if !Self.hasHeader("host", in: headers) {
             headers.append((key: "Host", value: url.port.map { "\(host):\($0)" } ?? host))
@@ -500,6 +515,64 @@ class HybridDirectFetch: HybridDirectFetchSpec {
         var data = Data(head.utf8)
         data.append(body)
         return data
+    }
+
+    private static func bodyData(
+        for request: DirectFetchRequest
+    ) throws -> (body: Data, additionalHeaders: [(key: String, value: String)]) {
+        if let parts = request.bodyFormData, !parts.isEmpty {
+            let (body, contentType) = try Self.buildMultipartBody(parts)
+            return (body, [(key: "Content-Type", value: contentType)])
+        }
+        return (request.bodyString.map { Data($0.utf8) } ?? Data(), [])
+    }
+
+    private static func buildMultipartBody(_ parts: [DirectFetchFormDataPart]) throws -> (Data, String) {
+        let boundary = "DirectFetch-\(UUID().uuidString)"
+        let crlf = "\r\n"
+        var body = Data()
+
+        for part in parts {
+            body.append(Data("--\(boundary)\(crlf)".utf8))
+            if let fileUri = part.fileUri {
+                let fileName = Self.escapeMultipartValue(part.fileName ?? "file")
+                let mimeType = Self.escapeMultipartValue(part.mimeType ?? "application/octet-stream")
+                body.append(Data("Content-Disposition: form-data; name=\"\(Self.escapeMultipartValue(part.name))\"; filename=\"\(fileName)\"\(crlf)".utf8))
+                body.append(Data("Content-Type: \(mimeType)\(crlf)\(crlf)".utf8))
+                body.append(try Self.readMultipartFile(fileUri))
+            } else {
+                body.append(Data("Content-Disposition: form-data; name=\"\(Self.escapeMultipartValue(part.name))\"\(crlf)\(crlf)".utf8))
+                body.append(Data((part.value ?? "").utf8))
+            }
+            body.append(Data(crlf.utf8))
+        }
+
+        body.append(Data("--\(boundary)--\(crlf)".utf8))
+        return (body, "multipart/form-data; boundary=\(boundary)")
+    }
+
+    private static func readMultipartFile(_ uri: String) throws -> Data {
+        let url: URL
+        if let parsed = URL(string: uri), parsed.scheme?.lowercased() == "file" {
+            url = parsed
+        } else if uri.hasPrefix("http://") || uri.hasPrefix("https://") {
+            throw Self.error(code: 11, message: "Remote multipart file URLs are not supported: \(uri)")
+        } else {
+            url = URL(fileURLWithPath: uri)
+        }
+        do {
+            return try Data(contentsOf: url)
+        } catch {
+            throw Self.error(code: 12, message: "Cannot read multipart file at \(uri): \(error.localizedDescription)")
+        }
+    }
+
+    private static func escapeMultipartValue(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\r", with: "")
+            .replacingOccurrences(of: "\n", with: "")
     }
 
     private static func sendRawHttpRequest(

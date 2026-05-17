@@ -28,10 +28,13 @@
 #error NitroModules cannot be found! Are you sure you installed NitroModules properly?
 #endif
 
-
+// Forward declaration of `DirectFetchFormDataPart` to properly resolve imports.
+namespace margelo::nitro::directfetch { struct DirectFetchFormDataPart; }
 
 #include <string>
 #include <optional>
+#include "DirectFetchFormDataPart.hpp"
+#include <vector>
 
 namespace margelo::nitro::directfetch {
 
@@ -44,11 +47,12 @@ namespace margelo::nitro::directfetch {
     std::optional<std::string> method     SWIFT_PRIVATE;
     std::optional<std::string> headersJson     SWIFT_PRIVATE;
     std::optional<std::string> bodyString     SWIFT_PRIVATE;
+    std::optional<std::vector<DirectFetchFormDataPart>> bodyFormData     SWIFT_PRIVATE;
     std::optional<double> timeoutMs     SWIFT_PRIVATE;
 
   public:
     DirectFetchRequest() = default;
-    explicit DirectFetchRequest(std::string url, std::optional<std::string> method, std::optional<std::string> headersJson, std::optional<std::string> bodyString, std::optional<double> timeoutMs): url(url), method(method), headersJson(headersJson), bodyString(bodyString), timeoutMs(timeoutMs) {}
+    explicit DirectFetchRequest(std::string url, std::optional<std::string> method, std::optional<std::string> headersJson, std::optional<std::string> bodyString, std::optional<std::vector<DirectFetchFormDataPart>> bodyFormData, std::optional<double> timeoutMs): url(url), method(method), headersJson(headersJson), bodyString(bodyString), bodyFormData(bodyFormData), timeoutMs(timeoutMs) {}
 
   public:
     friend bool operator==(const DirectFetchRequest& lhs, const DirectFetchRequest& rhs) = default;
@@ -68,6 +72,7 @@ namespace margelo::nitro {
         JSIConverter<std::optional<std::string>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "method"))),
         JSIConverter<std::optional<std::string>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "headersJson"))),
         JSIConverter<std::optional<std::string>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "bodyString"))),
+        JSIConverter<std::optional<std::vector<margelo::nitro::directfetch::DirectFetchFormDataPart>>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "bodyFormData"))),
         JSIConverter<std::optional<double>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "timeoutMs")))
       );
     }
@@ -77,6 +82,7 @@ namespace margelo::nitro {
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "method"), JSIConverter<std::optional<std::string>>::toJSI(runtime, arg.method));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "headersJson"), JSIConverter<std::optional<std::string>>::toJSI(runtime, arg.headersJson));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "bodyString"), JSIConverter<std::optional<std::string>>::toJSI(runtime, arg.bodyString));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "bodyFormData"), JSIConverter<std::optional<std::vector<margelo::nitro::directfetch::DirectFetchFormDataPart>>>::toJSI(runtime, arg.bodyFormData));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "timeoutMs"), JSIConverter<std::optional<double>>::toJSI(runtime, arg.timeoutMs));
       return obj;
     }
@@ -92,6 +98,7 @@ namespace margelo::nitro {
       if (!JSIConverter<std::optional<std::string>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "method")))) return false;
       if (!JSIConverter<std::optional<std::string>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "headersJson")))) return false;
       if (!JSIConverter<std::optional<std::string>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "bodyString")))) return false;
+      if (!JSIConverter<std::optional<std::vector<margelo::nitro::directfetch::DirectFetchFormDataPart>>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "bodyFormData")))) return false;
       if (!JSIConverter<std::optional<double>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "timeoutMs")))) return false;
       return true;
     }

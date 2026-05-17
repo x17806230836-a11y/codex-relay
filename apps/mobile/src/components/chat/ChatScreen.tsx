@@ -1,6 +1,26 @@
 import { useSelector } from "@legendapp/state/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FontAwesome } from "@expo/vector-icons";
+import type {
+  AgentSkill,
+  PromptAttachment as ApiPromptAttachment,
+  PromptSkill as ApiPromptSkill,
+  PendingInputRequest,
+  ReasoningEffort,
+  RuntimeMode,
+  RuntimePreferences,
+  ThreadCollaborationMode,
+  ThreadSummary,
+  WebPreviewTarget,
+  WorkspaceChangesResponse,
+  WorkspacePreviewNavigationRequest,
+} from "codex-relay/api-schema";
+import {
+  WORKSPACE_PREVIEW_OPEN_PROTOCOL,
+  WorkspacePreviewNavigationRequestSchema,
+  promptMarkdownWithSkills,
+  promptSkillDisplayName,
+  promptSkillMentionTextCandidates,
+} from "codex-relay/api-schema";
 import {
   CameraView,
   useCameraPermissions,
@@ -10,6 +30,7 @@ import {
 import * as Clipboard from "expo-clipboard";
 import * as ImagePicker from "expo-image-picker";
 import { useFocusEffect, useNavigation } from "expo-router";
+import { Star } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
@@ -22,37 +43,16 @@ import {
   TextInput,
   View,
 } from "react-native";
-import Animated, { LinearTransition } from "react-native-reanimated";
 import { KeyboardController } from "react-native-keyboard-controller";
-import { StyleSheet } from "react-native-unistyles";
 import PagerView from "react-native-pager-view";
+import Animated, { LinearTransition } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
-import type {
-  AgentSkill,
-  PromptAttachment as ApiPromptAttachment,
-  PendingInputRequest,
-  PromptSkill as ApiPromptSkill,
-  ReasoningEffort,
-  RuntimePreferences,
-  RuntimeMode,
-  ThreadCollaborationMode,
-  ThreadSummary,
-  WebPreviewTarget,
-  WorkspaceChangesResponse,
-  WorkspacePreviewNavigationRequest,
-} from "codex-relay/api-schema";
-import {
-  WORKSPACE_PREVIEW_OPEN_PROTOCOL,
-  promptMarkdownWithSkills,
-  promptSkillDisplayName,
-  promptSkillMentionTextCandidates,
-  WorkspacePreviewNavigationRequestSchema,
-} from "codex-relay/api-schema";
+import { StyleSheet } from "react-native-unistyles";
 
 import { ThemedText } from "@/components/themed-text";
 import { Button } from "@/components/ui/button";
-import { Colors, Spacing } from "@/constants/theme";
 import { codexRelayRepositoryUrl } from "@/constants/links";
+import { Colors, Spacing } from "@/constants/theme";
 import {
   getCodexRelayServerUrl,
   hasCodexRelaySession,
@@ -66,6 +66,14 @@ import {
   streamThreadRun,
   uploadImageAttachments,
 } from "@/lib/codex-relay-api";
+import {
+  hapticLightImpact,
+  hapticMediumImpact,
+  hapticSelection,
+  hapticSuccess,
+  hapticWarning,
+} from "@/lib/haptics";
+import { runtimePreferencesForWorkspace } from "@/lib/runtime-preferences";
 import {
   applyStreamEventToServerState,
   checkoutWorkspaceBranchServerState,
@@ -81,51 +89,43 @@ import {
   fetchThreadsState,
   fetchWorkspaceChangesState,
   optimisticallySteerQueuedInputState,
-  removeQueuedThreadInputServerState,
   removePendingInputRequestState,
+  removeQueuedThreadInputServerState,
   restoreOptimisticSteerQueuedInputState,
   serverStateKeys,
   serverStateQueryFns,
   setQueuedInputsState,
-  setRuntimePreferencesState,
   setRuntimePreferencesResponseState,
+  setRuntimePreferencesState,
   setStatusState,
-  setThreadRunningState,
   setThreadDetailState,
+  setThreadRunningState,
   setThreadsState,
   setWorkspaceRuntimePreferencesState,
   steerQueuedThreadInputServerState,
   submitThreadInputServerState,
   updateRuntimePreferencesServerState,
 } from "@/lib/server-state";
-import { runtimePreferencesForWorkspace } from "@/lib/runtime-preferences";
-import { readCachedWorkspaceRuntimePreferences } from "@/lib/workspace-runtime-preferences-cache";
 import { completeThreadRunSession, handleThreadRunStreamEvent } from "@/lib/thread-run-stream";
-import {
-  hapticLightImpact,
-  hapticMediumImpact,
-  hapticSelection,
-  hapticSuccess,
-  hapticWarning,
-} from "@/lib/haptics";
+import { readCachedWorkspaceRuntimePreferences } from "@/lib/workspace-runtime-preferences-cache";
 import {
   appendComposerAttachments,
   chatStore$,
   clearComposerDraft,
   clearThreadStreamReconnectRequest,
   composerThreadKey,
-  getComposerAttachments,
   getCollaborationMode,
+  getComposerAttachments,
   getComposerDraft,
   getComposerSkills,
   moveNewThreadCollaborationMode,
   requestThreadStreamReconnect,
   resetChatSessionState,
   setActiveThread,
-  setConnection,
   setComposerAttachments,
   setComposerDraft,
   setComposerSkills,
+  setConnection,
   setHasPairedSession,
   setServerUrl,
   setThreadCollaborationMode,
@@ -135,6 +135,7 @@ import {
 } from "@/state/chat-store";
 import { addWorkspacePreviewTab } from "@/state/workspace-preview-store";
 
+import { FaGithub } from "@/assets/icons/fa";
 import { ChatControls } from "./ChatControls";
 import { ChatShell } from "./ChatShell";
 import { ConnectionBanner } from "./ConnectionBanner";
@@ -2241,12 +2242,12 @@ export function ChatScreen() {
                 style={({ pressed }) => [styles.scannerRepositoryLink, pressed && styles.pressed]}
               >
                 <View style={styles.scannerRepositoryIcon}>
-                  <FontAwesome name="github" size={14} color={Colors.dark.text} />
+                  <FaGithub size={14} color={Colors.dark.text} />
                 </View>
                 <ThemedText type="smallBold" style={styles.scannerRepositoryText}>
                   Star on GitHub
                 </ThemedText>
-                <FontAwesome name="star" size={11} color={Colors.dark.text} />
+                <Star size={11} color={Colors.dark.text} fill={Colors.dark.text} />
               </Pressable>
               <Pressable
                 accessibilityRole="button"

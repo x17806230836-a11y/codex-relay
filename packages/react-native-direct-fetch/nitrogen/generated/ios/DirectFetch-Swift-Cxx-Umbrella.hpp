@@ -12,6 +12,8 @@
 namespace margelo::nitro::directfetch { struct DirectFetchDownloadRequest; }
 // Forward declaration of `DirectFetchDownloadResponse` to properly resolve imports.
 namespace margelo::nitro::directfetch { struct DirectFetchDownloadResponse; }
+// Forward declaration of `DirectFetchFormDataPart` to properly resolve imports.
+namespace margelo::nitro::directfetch { struct DirectFetchFormDataPart; }
 // Forward declaration of `DirectFetchRequest` to properly resolve imports.
 namespace margelo::nitro::directfetch { struct DirectFetchRequest; }
 // Forward declaration of `DirectFetchResponse` to properly resolve imports.
@@ -24,6 +26,7 @@ namespace margelo::nitro::directfetch { class HybridDirectFetchSpec; }
 // Include C++ defined types
 #include "DirectFetchDownloadRequest.hpp"
 #include "DirectFetchDownloadResponse.hpp"
+#include "DirectFetchFormDataPart.hpp"
 #include "DirectFetchRequest.hpp"
 #include "DirectFetchResponse.hpp"
 #include "DirectFetchStreamChunk.hpp"
@@ -35,6 +38,7 @@ namespace margelo::nitro::directfetch { class HybridDirectFetchSpec; }
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 // C++ helpers for Swift
 #include "DirectFetch-Swift-Cxx-Bridge.hpp"
