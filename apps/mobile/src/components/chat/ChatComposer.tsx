@@ -29,7 +29,7 @@ import {
   type MarkdownStyle,
   type MarkdownTextInputStyle,
 } from "react-native-enriched-markdown";
-import { KeyboardController } from "react-native-keyboard-controller";
+import { KeyboardController, useKeyboardState } from "react-native-keyboard-controller";
 import Animated, {
   Easing,
   FadeIn,
@@ -216,6 +216,7 @@ export const ChatComposer = memo(function ChatComposer({
   disabledPlaceholder,
   footer,
   focusRequestKey,
+  focusRecoveryKey,
   isAttachingImage,
   isRunning,
   nativeID,
@@ -248,6 +249,7 @@ export const ChatComposer = memo(function ChatComposer({
   disabledPlaceholder?: string;
   footer?: ReactNode;
   focusRequestKey?: number;
+  focusRecoveryKey?: number | string;
   isAttachingImage: boolean;
   isRunning: boolean;
   nativeID?: string;
@@ -306,6 +308,9 @@ export const ChatComposer = memo(function ChatComposer({
   const isInputRequestFreeformSelected = inputRequestDraft.freeformSelected;
   const selectedInputOption = inputRequestDraft.selectedOption;
   const inputRef = useRef<EnrichedMarkdownTextInputInstance | null>(null);
+  const isInputFocusedRef = useRef(false);
+  const lastInputFocusAtRef = useRef(0);
+  const previousFocusRecoveryKeyRef = useRef(focusRecoveryKey);
   const fileMentionRangesRef = useRef<FileMentionRange[]>([]);
   const skillMentionRangesRef = useRef<SkillMentionRange[]>([]);
   const nativeDraftRef = useRef(value);
@@ -315,6 +320,8 @@ export const ChatComposer = memo(function ChatComposer({
     undefined,
   );
   const attachLaunchTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const focusRecoveryTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const isKeyboardVisible = useKeyboardState((state) => state.isVisible);
   const hasMessageContent =
     Boolean(value.trim()) || attachments.length > 0 || selectedSkills.length > 0;
   const isAttachBusy = isAttachingImage || isAttachLaunchPending;
@@ -370,6 +377,9 @@ export const ChatComposer = memo(function ChatComposer({
       if (ignoredMarkdownChangeTimeoutRef.current) {
         clearTimeout(ignoredMarkdownChangeTimeoutRef.current);
       }
+      if (focusRecoveryTimeoutRef.current) {
+        clearTimeout(focusRecoveryTimeoutRef.current);
+      }
     };
   }, []);
 
@@ -382,6 +392,32 @@ export const ChatComposer = memo(function ChatComposer({
       inputRef.current?.focus();
     });
   }, [disabled, focusRequestKey]);
+
+  useEffect(() => {
+    if (previousFocusRecoveryKeyRef.current === focusRecoveryKey) {
+      return;
+    }
+    previousFocusRecoveryKeyRef.current = focusRecoveryKey;
+    if (focusRecoveryKey === undefined || disabled) {
+      return;
+    }
+
+    const focusedRecently = Date.now() - lastInputFocusAtRef.current < 1500;
+    if (!isInputFocusedRef.current && !focusedRecently && !isKeyboardVisible) {
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+    });
+    if (focusRecoveryTimeoutRef.current) {
+      clearTimeout(focusRecoveryTimeoutRef.current);
+    }
+    focusRecoveryTimeoutRef.current = setTimeout(() => {
+      focusRecoveryTimeoutRef.current = undefined;
+      inputRef.current?.focus();
+    }, 220);
+  }, [disabled, focusRecoveryKey, isKeyboardVisible]);
 
   useEffect(() => {
     const shouldRestoreSkillMentions =
@@ -948,9 +984,16 @@ export const ChatComposer = memo(function ChatComposer({
           defaultValue={value}
           editable={!disabled}
           markdownStyle={inputMarkdownStyle}
+          onBlur={() => {
+            isInputFocusedRef.current = false;
+          }}
           onChangeMarkdown={handleInputMarkdownChange}
           onChangeSelection={handleInputSelectionChange}
           onChangeText={handleInputTextChange}
+          onFocus={() => {
+            isInputFocusedRef.current = true;
+            lastInputFocusAtRef.current = Date.now();
+          }}
           ref={inputRef}
           placeholder={
             disabled

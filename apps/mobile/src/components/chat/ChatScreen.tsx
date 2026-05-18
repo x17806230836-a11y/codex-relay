@@ -51,6 +51,7 @@ import { StyleSheet } from "react-native-unistyles";
 
 import { ThemedText } from "@/components/themed-text";
 import { Button } from "@/components/ui/button";
+import { AppToast } from "@/components/ui/toast";
 import { codexRelayRepositoryUrl } from "@/constants/links";
 import { Colors, Spacing } from "@/constants/theme";
 import {
@@ -150,6 +151,7 @@ const CONNECTION_RETRY_MS = 2500;
 const STREAM_STALL_RECONNECT_MS = 45_000;
 const STREAM_WATCHDOG_INTERVAL_MS = 10_000;
 const SCANNER_TO_APPROVAL_SHEET_DELAY_MS = 450;
+const COPY_TOAST_VISIBLE_MS = 1800;
 const EMPTY_SKILLS: AgentSkill[] = [];
 const EMPTY_THREADS: ThreadSummary[] = [];
 let isHandlingPairingLink = false;
@@ -185,6 +187,8 @@ export function ChatScreen() {
   const [isHandlingScan, setHandlingScan] = useState(false);
   const [activePagerPage, setActivePagerPage] = useState(0);
   const [scannerMessage, setScannerMessage] = useState("Point the camera at the server QR.");
+  const copyToastIdRef = useRef(0);
+  const [copyToast, setCopyToast] = useState<{ id: number } | undefined>(undefined);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const drawerNavigation = useNavigation<{
     openDrawer?: () => void;
@@ -1988,6 +1992,11 @@ export function ChatScreen() {
     hapticMediumImpact();
   }
 
+  const showMessageCopiedToast = useCallback(() => {
+    copyToastIdRef.current += 1;
+    setCopyToast({ id: copyToastIdRef.current });
+  }, []);
+
   const isScannedPairing = pairingEntryMode === "scan";
   const isPairing = isPastePairing || isHandlingScan;
 
@@ -2016,6 +2025,7 @@ export function ChatScreen() {
               </Animated.View>
             }
             composerDisabled={connection === "offline"}
+            composerFocusRecoveryKey={connection}
             collaborationMode={collaborationMode}
             composerFocusRequestKey={composerFocusRequestKey}
             composerFooter={
@@ -2048,6 +2058,7 @@ export function ChatScreen() {
             onAddPlanContext={addPlanContext}
             onImplementPlan={implementPlan}
             onIgnoreInputRequest={(request) => void ignoreInputRequest(request)}
+            onMessageCopied={showMessageCopiedToast}
             onOpenMarkdownAttachment={openMarkdownAttachmentPreview}
             onRefreshUsageStatus={() => refreshUsageStatus()}
             onSubmitInputRequest={(request, answers) => void submitInputRequest(request, answers)}
@@ -2104,6 +2115,18 @@ export function ChatScreen() {
           />
         </View>
       </PagerView>
+      {copyToast ? (
+        <AppToast
+          key={copyToast.id}
+          durationMs={COPY_TOAST_VISIBLE_MS}
+          title="Copied to clipboard"
+          message="Message Markdown copied."
+          visible
+          onDismiss={() =>
+            setCopyToast((current) => (current?.id === copyToast.id ? undefined : current))
+          }
+        />
+      ) : null}
       <Modal
         animationType="slide"
         onRequestClose={() => setPastePairOpen(false)}

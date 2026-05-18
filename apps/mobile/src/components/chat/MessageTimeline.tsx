@@ -94,6 +94,7 @@ export function MessageTimeline({
   keyboardLayoutFrozen = false,
   messages,
   onKeyboardDismissRequest,
+  onMessageCopied,
   onOpenMarkdownAttachment,
   threadId,
 }: {
@@ -103,6 +104,7 @@ export function MessageTimeline({
   keyboardLayoutFrozen?: boolean;
   messages: ChatMessage[];
   onKeyboardDismissRequest?: () => void;
+  onMessageCopied?: () => void;
   onOpenMarkdownAttachment?: (target: WorkspaceMarkdownPreviewTarget) => void;
   threadId?: string;
 }) {
@@ -162,9 +164,13 @@ export function MessageTimeline({
 
   const renderMessage = useCallback(
     ({ item }: LegendListRenderItemProps<ChatMessage>) => (
-      <MessageBubble message={item} onOpenMarkdownAttachment={onOpenMarkdownAttachment} />
+      <MessageBubble
+        message={item}
+        onMessageCopied={onMessageCopied}
+        onOpenMarkdownAttachment={onOpenMarkdownAttachment}
+      />
     ),
-    [onOpenMarkdownAttachment],
+    [onMessageCopied, onOpenMarkdownAttachment],
   );
   const renderScrollComponent = useCallback(
     (props: ScrollViewProps) => (

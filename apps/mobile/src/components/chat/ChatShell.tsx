@@ -40,6 +40,7 @@ export function ChatShell({
   composerDisabledPlaceholder,
   composerFooter,
   composerFocusRequestKey,
+  composerFocusRecoveryKey,
   contextWindowUsage,
   collaborationMode,
   inputNativeID,
@@ -55,6 +56,7 @@ export function ChatShell({
   onImplementPlan,
   onIgnoreInputRequest,
   onOpenMarkdownAttachment,
+  onMessageCopied,
   onRefreshUsageStatus,
   onSubmitInputRequest,
   onRemoveQueuedPrompt,
@@ -77,6 +79,7 @@ export function ChatShell({
   composerDisabledPlaceholder?: string;
   composerFooter?: ReactNode;
   composerFocusRequestKey?: number;
+  composerFocusRecoveryKey?: number | string;
   contextWindowUsage?: ContextWindowUsage;
   collaborationMode: ThreadCollaborationMode;
   inputNativeID: string;
@@ -91,6 +94,7 @@ export function ChatShell({
   onAddPlanContext?: (context: string) => void;
   onImplementPlan?: () => void;
   onIgnoreInputRequest?: (request: PendingInputRequest) => void;
+  onMessageCopied?: () => void;
   onOpenMarkdownAttachment?: (target: WorkspaceMarkdownPreviewTarget) => void;
   onRefreshUsageStatus?: () => Promise<void> | void;
   onSubmitInputRequest?: (request: PendingInputRequest, answers: string[]) => void;
@@ -170,6 +174,7 @@ export function ChatShell({
                 isRunning={isRunning}
                 keyboardLayoutFrozen={isKeyboardLayoutFrozen}
                 messages={messages}
+                onMessageCopied={onMessageCopied}
                 onOpenMarkdownAttachment={onOpenMarkdownAttachment}
                 onKeyboardDismissRequest={handleTimelineKeyboardDismissRequest}
                 bottomAccessoryHeight={queuedPromptPanelHeight}
@@ -185,6 +190,7 @@ export function ChatShell({
                 disabled={composerDisabled}
                 disabledPlaceholder={composerDisabledPlaceholder}
                 focusRequestKey={composerFocusRequestKey}
+                focusRecoveryKey={composerFocusRecoveryKey}
                 isAttachingImage={isAttachingImage}
                 isRunning={isRunning}
                 nativeID={inputNativeID}

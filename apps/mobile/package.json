@@ -93,7 +93,7 @@
     "@shikijs/monaco": "4.0.2",
     "@types/react": "~19.2.2",
     "dotenv": "^17.4.2",
-    "hot-updater": "0.31.2",
+    "hot-updater": "https://pkg.pr.new/hot-updater@1008",
     "monaco-editor-core": "0.55.1",
     "prettier-plugin-tailwindcss": "^0.8.0",
     "tailwindcss": "^4.2.4",

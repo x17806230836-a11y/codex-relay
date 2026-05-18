@@ -4,10 +4,12 @@ import {
   ArrowRight,
   ArrowRightToLine,
   ArrowUp,
+  Check,
   ChevronDown,
   ChevronRight,
   CircleAlert,
   CircleCheck,
+  Copy,
   ExternalLink,
   File,
   FileDiff,
@@ -47,7 +49,9 @@ export type AppIconName =
   | "branch"
   | "closeMenu"
   | "chevronRight"
+  | "check"
   | "controls"
+  | "copy"
   | "expand"
   | "externalLink"
   | "fast"
@@ -91,9 +95,11 @@ const iconComponents: Record<AppIconName, LucideComponent> = {
   archive: Archive,
   attach: Image,
   branch: GitBranch,
+  check: Check,
   closeMenu: Menu,
   chevronRight: ChevronRight,
   controls: SlidersHorizontal,
+  copy: Copy,
   expand: ChevronDown,
   externalLink: ExternalLink,
   fast: Zap,

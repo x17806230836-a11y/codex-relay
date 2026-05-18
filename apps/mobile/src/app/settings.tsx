@@ -3,7 +3,7 @@ import { useSelector } from "@legendapp/state/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { Pressable, ScrollView, View } from "react-native";
+import { Alert, Pressable, ScrollView, View } from "react-native";
 import Animated, { FadeIn, FadeOut, LinearTransition } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StyleSheet } from "react-native-unistyles";
@@ -11,7 +11,13 @@ import { StyleSheet } from "react-native-unistyles";
 import { ThemedText } from "@/components/themed-text";
 import { Icon } from "@/components/ui/icon";
 import { Colors, Fonts, MaxContentWidth, Spacing } from "@/constants/theme";
-import { signOutCodexRelaySession } from "@/lib/codex-relay-api";
+import {
+  getCodexRelayServerUrlCandidates,
+  refreshSession,
+  setCodexRelayServerUrl,
+  signOutCodexRelaySession,
+  type CodexRelayServerUrlCandidate,
+} from "@/lib/codex-relay-api";
 import { hapticSelection, hapticWarning } from "@/lib/haptics";
 import {
   clearHotUpdaterLogs,
@@ -19,8 +25,15 @@ import {
   useHotUpdaterLogs,
 } from "@/lib/hot-updater-logs";
 import { formatRateLimitRemaining, visibleRateLimitRows } from "@/lib/rate-limits";
-import { clearServerState, serverStateKeys, serverStateQueryFns } from "@/lib/server-state";
-import { chatStore$, resetChatSessionState } from "@/state/chat-store";
+import {
+  clearServerState,
+  fetchRateLimitsState,
+  fetchStatusState,
+  serverStateKeys,
+  serverStateQueryFns,
+  setStatusState,
+} from "@/lib/server-state";
+import { chatStore$, resetChatSessionState, setConnection, setServerUrl } from "@/state/chat-store";
 
 const hotUpdaterBaseUrl = process.env.EXPO_PUBLIC_HOT_UPDATER_BASE_URL?.trim();
 const hotUpdaterBaseUrlStatus = hotUpdaterBaseUrl ? "configured" : "missing";
@@ -46,6 +59,10 @@ export default function SettingsScreen() {
   const hotUpdaterTapCountRef = useRef(0);
   const [showHotUpdaterLogs, setShowHotUpdaterLogs] = useState(false);
   const hotUpdaterLogs = useHotUpdaterLogs();
+  const [serverUrlCandidates, setServerUrlCandidates] = useState(() =>
+    getCodexRelayServerUrlCandidates(),
+  );
+  const [switchingServerUrl, setSwitchingServerUrl] = useState<string | undefined>();
   const [appUpdate, setAppUpdate] = useState<AppUpdateState>({
     status: "checking",
     updateInfo: null,
@@ -114,6 +131,10 @@ export default function SettingsScreen() {
     };
   }, []);
 
+  useEffect(() => {
+    setServerUrlCandidates(getCodexRelayServerUrlCandidates());
+  }, [serverUrl]);
+
   function closeSettings() {
     hapticSelection();
     if (router.canGoBack()) {
@@ -129,6 +150,36 @@ export default function SettingsScreen() {
     clearServerState(queryClient);
     resetChatSessionState();
     router.replace("/");
+  }
+
+  async function selectServerAddress(candidate: CodexRelayServerUrlCandidate) {
+    if (candidate.url === serverUrl || switchingServerUrl) {
+      return;
+    }
+
+    hapticSelection();
+    setSwitchingServerUrl(candidate.url);
+    const normalizedServerUrl = setCodexRelayServerUrl(candidate.url);
+    setServerUrl(normalizedServerUrl);
+    setServerUrlCandidates(getCodexRelayServerUrlCandidates());
+    clearServerState(queryClient);
+    setConnection("checking");
+
+    try {
+      await refreshSession().catch(() => false);
+      const [status] = await Promise.all([
+        fetchStatusState(queryClient),
+        fetchRateLimitsState(queryClient).catch(() => undefined),
+      ]);
+      setStatusState(queryClient, status);
+      setConnection("connected");
+    } catch (caught) {
+      const message = settingsErrorMessage(caught);
+      setConnection("offline", message);
+      Alert.alert("Server unavailable", message);
+    } finally {
+      setSwitchingServerUrl(undefined);
+    }
   }
 
   async function applyAppUpdate() {
@@ -257,6 +308,56 @@ export default function SettingsScreen() {
                 </View>
               </Animated.View>
               <InfoLine label="Server" value={compactServer(serverUrl)} />
+              <View style={styles.serverAddressList}>
+                {serverUrlCandidates.map((candidate) => {
+                  const isSelected = candidate.url === serverUrl;
+                  const isSwitching = switchingServerUrl === candidate.url;
+                  return (
+                    <Pressable
+                      key={candidate.url}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Use ${compactServer(candidate.url)}`}
+                      disabled={isSelected || Boolean(switchingServerUrl)}
+                      onPress={() => void selectServerAddress(candidate)}
+                      style={({ pressed }) => [
+                        styles.serverAddressRow,
+                        isSelected && styles.serverAddressRowSelected,
+                        pressed && styles.pressed,
+                      ]}
+                    >
+                      <View style={styles.serverAddressCopy}>
+                        <ThemedText type="smallBold" style={styles.serverAddressLabel}>
+                          {candidate.label}
+                        </ThemedText>
+                        <ThemedText
+                          type="code"
+                          themeColor="textSecondary"
+                          style={styles.serverAddressValue}
+                          numberOfLines={1}
+                        >
+                          {compactServer(candidate.url)}
+                        </ThemedText>
+                      </View>
+                      <View
+                        style={[
+                          styles.serverAddressStatus,
+                          isSelected && styles.serverAddressStatusSelected,
+                        ]}
+                      >
+                        <ThemedText
+                          type="code"
+                          style={[
+                            styles.serverAddressStatusText,
+                            isSelected && styles.serverAddressStatusTextSelected,
+                          ]}
+                        >
+                          {isSwitching ? "CHECKING" : isSelected ? "ACTIVE" : "USE"}
+                        </ThemedText>
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </View>
             </Animated.View>
           </Animated.View>
 
@@ -581,6 +682,13 @@ function rateLimitProgressColor(remainingPercent: number) {
     return "#F2B84B";
   }
   return "#93E1B6";
+}
+
+function settingsErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return "Could not reach the selected server address.";
 }
 
 function appliedHotUpdateBundleSuffix() {
@@ -941,6 +1049,64 @@ const styles = StyleSheet.create({
     color: Colors.dark.text,
     fontSize: 12,
     lineHeight: 16,
+  },
+  serverAddressList: {
+    gap: 7,
+    paddingTop: 2,
+  },
+  serverAddressRow: {
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    borderColor: "rgba(255, 255, 255, 0.08)",
+    borderRadius: 7,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: Spacing.two,
+    minHeight: 54,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  serverAddressRowSelected: {
+    backgroundColor: "rgba(44, 163, 111, 0.12)",
+    borderColor: "rgba(147, 225, 182, 0.24)",
+  },
+  serverAddressCopy: {
+    flex: 1,
+    gap: 2,
+    minWidth: 0,
+  },
+  serverAddressLabel: {
+    fontSize: 13,
+    lineHeight: 17,
+  },
+  serverAddressValue: {
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  serverAddressStatus: {
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    borderColor: "rgba(255, 255, 255, 0.1)",
+    borderRadius: 6,
+    borderWidth: 1,
+    flexShrink: 0,
+    justifyContent: "center",
+    minWidth: 62,
+    paddingHorizontal: 7,
+    paddingVertical: 4,
+  },
+  serverAddressStatusSelected: {
+    backgroundColor: "rgba(44, 163, 111, 0.16)",
+    borderColor: "rgba(147, 225, 182, 0.28)",
+  },
+  serverAddressStatusText: {
+    color: Colors.dark.textSecondary,
+    fontFamily: Fonts.monoMedium,
+    fontSize: 9,
+    lineHeight: 12,
+  },
+  serverAddressStatusTextSelected: {
+    color: "#93E1B6",
   },
   signOutRow: {
     backgroundColor: "rgba(216, 79, 79, 0.08)",

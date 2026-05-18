@@ -1,9 +1,11 @@
 import type { ChatMessage } from "codex-relay/api-schema";
+import * as Clipboard from "expo-clipboard";
 import * as FileSystem from "expo-file-system/legacy";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import { memo, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import {
+  Alert,
   Text as NativeText,
   Pressable,
   ScrollView,
@@ -106,9 +108,11 @@ type MarkdownSegment =
 
 export const MessageBubble = memo(function MessageBubble({
   message,
+  onMessageCopied,
   onOpenMarkdownAttachment,
 }: {
   message: ChatMessage;
+  onMessageCopied?: () => void;
   onOpenMarkdownAttachment?: (target: WorkspaceMarkdownPreviewTarget) => void;
 }) {
   const theme = useTheme();
@@ -135,6 +139,10 @@ export const MessageBubble = memo(function MessageBubble({
     () => (isUser ? formatUserContent(messageContent, imageUris.length > 0) : messageContent),
     [isUser, messageContent, imageUris.length],
   );
+  const copyMarkdown = useMemo(
+    () => messageMarkdownForClipboard(message.role, message.content, imageUris.length > 0),
+    [imageUris.length, message.content, message.role],
+  );
   const goalPrompt = useMemo(
     () => (isUser ? parseGoalPrompt(displayContent) : undefined),
     [isUser, displayContent],
@@ -144,6 +152,30 @@ export const MessageBubble = memo(function MessageBubble({
     [isAssistant, message.content],
   );
   const timestamp = useMemo(() => formatMessageTime(message.createdAt), [message.createdAt]);
+  const [isCopied, setCopied] = useState(false);
+  const handleCopyPress = useCallback(() => {
+    if (!copyMarkdown) {
+      return;
+    }
+
+    hapticSelection();
+    setCopied(true);
+    onMessageCopied?.();
+    Clipboard.setStringAsync(copyMarkdown).catch((caught: unknown) => {
+      setCopied(false);
+      Alert.alert("Copy failed", copyFailureMessage(caught));
+    });
+  }, [copyMarkdown, onMessageCopied]);
+
+  useEffect(() => {
+    if (!isCopied) {
+      return;
+    }
+
+    const timer = setTimeout(() => setCopied(false), 1400);
+    return () => clearTimeout(timer);
+  }, [isCopied]);
+
   const assistantMarkdownStyle = useMemo<MarkdownStyle>(
     () => ({
       blockquote: {
@@ -279,6 +311,13 @@ export const MessageBubble = memo(function MessageBubble({
             messageId={message.id}
             onOpenMarkdownAttachment={onOpenMarkdownAttachment}
           />
+          <MessageFooter
+            canCopy={copyMarkdown.length > 0}
+            isCopied={isCopied}
+            onCopyPress={handleCopyPress}
+            timestamp={timestamp}
+            variant="user"
+          />
         </View>
       </View>
     );
@@ -325,9 +364,13 @@ export const MessageBubble = memo(function MessageBubble({
               messageId={message.id}
               onOpenMarkdownAttachment={onOpenMarkdownAttachment}
             />
-            <ThemedText type="code" themeColor="textSecondary" style={styles.timestamp}>
-              {timestamp}
-            </ThemedText>
+            <MessageFooter
+              canCopy={copyMarkdown.length > 0}
+              isCopied={isCopied}
+              onCopyPress={handleCopyPress}
+              timestamp={timestamp}
+              variant="assistant"
+            />
           </View>
         ) : (
           <View style={styles.userContent}>
@@ -351,24 +394,88 @@ export const MessageBubble = memo(function MessageBubble({
           </View>
         )}
         {!isAssistant ? (
-          <ThemedText
-            type="code"
-            themeColor={isUser ? undefined : "textSecondary"}
-            style={[styles.timestamp, isUser && styles.userTimestamp]}
-          >
-            {timestamp}
-          </ThemedText>
+          <MessageFooter
+            canCopy={copyMarkdown.length > 0}
+            isCopied={isCopied}
+            onCopyPress={handleCopyPress}
+            timestamp={timestamp}
+            variant={isUser ? "user" : "assistant"}
+          />
         ) : null}
       </View>
     </View>
   );
 });
 
+function MessageFooter({
+  canCopy,
+  isCopied,
+  onCopyPress,
+  timestamp,
+  variant,
+}: {
+  canCopy: boolean;
+  isCopied: boolean;
+  onCopyPress: () => void;
+  timestamp: string;
+  variant: "assistant" | "user";
+}) {
+  const isUser = variant === "user";
+  const iconTint = isCopied
+    ? "#8EE6A8"
+    : isUser
+      ? "rgba(255, 255, 255, 0.72)"
+      : "rgba(214, 222, 232, 0.62)";
+
+  return (
+    <View style={[styles.messageFooter, isUser && styles.userMessageFooter]}>
+      <ThemedText
+        type="code"
+        themeColor={isUser ? undefined : "textSecondary"}
+        style={[styles.timestamp, isUser && styles.userTimestamp]}
+      >
+        {timestamp}
+      </ThemedText>
+      <Pressable
+        accessibilityLabel={isCopied ? "Copied message Markdown" : "Copy message Markdown"}
+        accessibilityRole="button"
+        accessibilityState={{ disabled: !canCopy }}
+        disabled={!canCopy}
+        hitSlop={8}
+        onPress={onCopyPress}
+        style={({ pressed }) => [
+          styles.copyButton,
+          isUser && styles.userCopyButton,
+          isCopied && styles.copyButtonCopied,
+          !canCopy && styles.copyButtonDisabled,
+          pressed && styles.pressed,
+        ]}
+      >
+        <Icon name={isCopied ? "check" : "copy"} size={12} tintColor={iconTint} strokeWidth={2.2} />
+      </Pressable>
+    </View>
+  );
+}
+
 function formatUserContent(content: string, hasImages = false) {
   if (!content) {
     return "";
   }
 
+  const normalizedLines = normalizeUserMarkdownContent(content, hasImages, true);
+
+  if (normalizedLines.length <= MAX_DISPLAY_LENGTH) {
+    return normalizedLines;
+  }
+
+  return `${normalizedLines.slice(0, MAX_DISPLAY_LENGTH).trimEnd()}\n\n[Message preview truncated]`;
+}
+
+function formatUserCopyMarkdown(content: string, hasImages = false) {
+  return normalizeUserMarkdownContent(content, hasImages, false).trimEnd();
+}
+
+function normalizeUserMarkdownContent(content: string, hasImages: boolean, truncateLines: boolean) {
   let attachmentIndex = 0;
   const replacedDataUris = content
     .replace(/\n*Attached image \d+(?: \([^)]+\))?:\n?data:[^;\s]+;base64,[A-Za-z0-9+/=\n\r]+/g, "")
@@ -381,7 +488,7 @@ function formatUserContent(content: string, hasImages = false) {
   const normalizedLines = replacedDataUris
     .replace(/\r\n/g, "\n")
     .split("\n")
-    .map((line) => truncateLine(line))
+    .map((line) => (truncateLines ? truncateLine(line) : line))
     .join("\n")
     .trim();
 
@@ -389,11 +496,24 @@ function formatUserContent(content: string, hasImages = false) {
     return "";
   }
 
-  if (normalizedLines.length <= MAX_DISPLAY_LENGTH) {
-    return normalizedLines;
+  return normalizedLines;
+}
+
+function messageMarkdownForClipboard(
+  role: ChatMessage["role"],
+  messageContent: string,
+  hasImages: boolean,
+) {
+  if (role === "user") {
+    const content = formatUserCopyMarkdown(messageContent, hasImages);
+    return parseGoalPrompt(content) ?? content;
   }
 
-  return `${normalizedLines.slice(0, MAX_DISPLAY_LENGTH).trimEnd()}\n\n[Message preview truncated]`;
+  return messageContent.trimEnd();
+}
+
+function copyFailureMessage(error: unknown) {
+  return error instanceof Error ? error.message : "The message could not be copied.";
 }
 
 function parseGoalPrompt(content: string) {
@@ -1185,14 +1305,38 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.one,
     opacity: 0.7,
   },
-  timestamp: {
+  messageFooter: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 6,
     marginTop: 4,
+  },
+  userMessageFooter: {
+    alignSelf: "flex-end",
+  },
+  timestamp: {
     opacity: 0.55,
   },
   userTimestamp: {
-    alignSelf: "flex-end",
     color: "rgba(255, 255, 255, 0.68)",
     fontSize: 10,
+  },
+  copyButton: {
+    alignItems: "center",
+    borderRadius: 8,
+    height: 22,
+    justifyContent: "center",
+    marginLeft: -1,
+    width: 22,
+  },
+  userCopyButton: {
+    marginRight: -4,
+  },
+  copyButtonCopied: {
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+  },
+  copyButtonDisabled: {
+    opacity: 0.36,
   },
   protocolRow: {
     alignSelf: "stretch",

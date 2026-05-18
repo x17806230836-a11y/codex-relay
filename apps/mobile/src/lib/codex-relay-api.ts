@@ -100,6 +100,7 @@ const clientTokenRefreshLeewayMs = 24 * 60 * 60 * 1000;
 const pairingConnectTimeoutMs = 2500;
 const streamRequestTimeoutMs = 10 * 60 * 1000;
 const terminalStreamRequestTimeoutMs = 24 * 60 * 60 * 1000;
+const serverUrlCandidatesStorageKey = "codex-relay.server-url-candidates";
 const serverUrlStorageKey = "codex-relay.server-url";
 const storage = createMMKV({ id: "codex-relay" });
 
@@ -111,6 +112,11 @@ type PairingQrPayload = {
   serverPublicKey: string;
   serverUrl: string;
   serverUrls: string[];
+};
+
+export type CodexRelayServerUrlCandidate = {
+  label: string;
+  url: string;
 };
 
 class CodexRelayApiError extends Error {
@@ -151,6 +157,13 @@ export const fallbackCodexRelayServerUrl =
 
 export function getCodexRelayServerUrl() {
   return storage.getString(serverUrlStorageKey) ?? fallbackCodexRelayServerUrl;
+}
+
+export function getCodexRelayServerUrlCandidates(): CodexRelayServerUrlCandidate[] {
+  return serverUrlCandidatesFromUrls([
+    getCodexRelayServerUrl(),
+    ...readStoredServerUrlCandidates(),
+  ]);
 }
 
 export function setCodexRelayServerUrl(url: string) {
@@ -206,6 +219,7 @@ export async function pairWithQrPayload(
   for (const serverUrl of pairingPayload.serverUrls) {
     try {
       const paired = await pairWithApproval(serverUrl, pairingPayload.serverPublicKey, handlers);
+      saveServerUrlCandidates([paired.serverUrl, ...pairingPayload.serverUrls]);
       return {
         ...pairingPayload,
         serverUrl: paired.serverUrl,
@@ -556,6 +570,58 @@ function dedupeServerUrls(urls: string[]) {
     }
   }
   return [...deduped];
+}
+
+function readStoredServerUrlCandidates() {
+  const stored = storage.getString(serverUrlCandidatesStorageKey);
+  if (!stored) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(stored) as unknown;
+    return Array.isArray(parsed)
+      ? parsed.filter((url): url is string => typeof url === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveServerUrlCandidates(urls: string[]) {
+  storage.set(serverUrlCandidatesStorageKey, JSON.stringify(dedupeServerUrls(urls)));
+}
+
+function serverUrlCandidatesFromUrls(urls: string[]): CodexRelayServerUrlCandidate[] {
+  return dedupeServerUrls(urls).map((url) => ({
+    label: serverUrlCandidateLabel(url),
+    url,
+  }));
+}
+
+function serverUrlCandidateLabel(url: string) {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    if (host === "localhost" || host === "127.0.0.1" || host === "::1") {
+      return "Localhost";
+    }
+    if (host.endsWith(".local")) {
+      return "Local network";
+    }
+    if (host.endsWith(".ts.net") || host.endsWith(".beta.tailscale.net")) {
+      return "Tailscale DNS";
+    }
+    if (isCarrierGradePrivateIPv4Host(host)) {
+      return "Tailscale IP";
+    }
+    if (isPrivateIPv4Host(host) || isLocalIPv6Host(host)) {
+      return "LAN IP";
+    }
+    return "Server";
+  } catch {
+    return "Server";
+  }
 }
 
 function pairingCandidateFailureMessage(errors: PairingCandidateConnectionError[]) {
