@@ -29,7 +29,7 @@
     "oxlint": "^1.62.0",
     "typescript": "~5.9.2"
   },
-  "packageManager": "pnpm@11.0.3",
+  "packageManager": "pnpm@11.2.2",
   "pnpm": {
     "overrides": {
       "@expo/fingerprint": "0.17.3",
@@ -37,7 +37,6 @@
       "@expo/metro-runtime>@expo/log-box": "56.0.5",
       "expo-linking>expo-constants": "56.0.5",
       "expo-constants": "56.0.5",
-      "hot-updater>@expo/fingerprint": "0.17.3",
       "react": "19.2.3",
       "react-dom": "19.2.3",
       "react-native": "0.85.3",

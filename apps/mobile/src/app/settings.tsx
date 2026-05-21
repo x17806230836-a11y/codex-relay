@@ -2,14 +2,22 @@ import { HotUpdater } from "@hot-updater/react-native";
 import { useSelector } from "@legendapp/state/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
+import { Heart } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
-import { Alert, Pressable, ScrollView, View } from "react-native";
+import { Alert, Linking, Pressable, ScrollView, View } from "react-native";
 import Animated, { FadeIn, FadeOut, LinearTransition } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StyleSheet } from "react-native-unistyles";
 
+import { FaGithub } from "@/assets/icons/fa";
 import { ThemedText } from "@/components/themed-text";
 import { Icon } from "@/components/ui/icon";
+import {
+  codexRelayRepositoryLabel,
+  codexRelayRepositoryUrl,
+  codexRelaySponsorLabel,
+  codexRelaySponsorUrl,
+} from "@/constants/links";
 import { Colors, Fonts, MaxContentWidth, Spacing } from "@/constants/theme";
 import {
   getCodexRelayServerUrlCandidates,
@@ -214,6 +222,11 @@ export default function SettingsScreen() {
     setShowHotUpdaterLogs(true);
   }
 
+  function openProjectLink(url: string) {
+    hapticSelection();
+    void Linking.openURL(url);
+  }
+
   return (
     <SafeAreaView edges={["top", "left", "right"]} style={styles.screen}>
       <View style={styles.container}>
@@ -389,6 +402,62 @@ export default function SettingsScreen() {
                 </View>
               </View>
             </Pressable>
+          </Animated.View>
+
+          <Animated.View layout={settingsLayoutTransition} style={styles.section}>
+            <ThemedText type="small" themeColor="textSecondary" style={styles.sectionLabel}>
+              Project
+            </ThemedText>
+            <Animated.View layout={settingsLayoutTransition} style={styles.projectLinkList}>
+              <Pressable
+                accessibilityRole="link"
+                accessibilityLabel="Open Codex Relay GitHub repository"
+                onPress={() => openProjectLink(codexRelayRepositoryUrl)}
+                style={({ pressed }) => [styles.projectLinkRow, pressed && styles.pressed]}
+              >
+                <View style={styles.projectLinkIcon}>
+                  <FaGithub size={17} color={Colors.dark.text} />
+                </View>
+                <View style={styles.projectLinkCopy}>
+                  <ThemedText type="smallBold" style={styles.projectLinkTitle}>
+                    GitHub
+                  </ThemedText>
+                  <ThemedText
+                    type="code"
+                    themeColor="textSecondary"
+                    style={styles.projectLinkSubtitle}
+                    numberOfLines={1}
+                  >
+                    {codexRelayRepositoryLabel}
+                  </ThemedText>
+                </View>
+                <Icon name="externalLink" size={15} tintColor={Colors.dark.textSecondary} />
+              </Pressable>
+              <Pressable
+                accessibilityRole="link"
+                accessibilityLabel="Open gronxb GitHub Sponsors"
+                onPress={() => openProjectLink(codexRelaySponsorUrl)}
+                style={({ pressed }) => [styles.projectLinkRow, pressed && styles.pressed]}
+              >
+                <View style={[styles.projectLinkIcon, styles.projectLinkIconSponsor]}>
+                  <Heart size={16} color="#FF9FC0" fill="#FF9FC0" />
+                </View>
+                <View style={styles.projectLinkCopy}>
+                  <ThemedText type="smallBold" style={styles.projectLinkTitle}>
+                    Sponsor
+                  </ThemedText>
+                  <ThemedText
+                    type="code"
+                    themeColor="textSecondary"
+                    style={styles.projectLinkSubtitle}
+                    numberOfLines={1}
+                  >
+                    {codexRelaySponsorLabel}
+                  </ThemedText>
+                </View>
+                <Icon name="externalLink" size={15} tintColor={Colors.dark.textSecondary} />
+              </Pressable>
+            </Animated.View>
           </Animated.View>
 
           <Animated.View layout={settingsLayoutTransition} style={styles.versionFooter}>
@@ -781,6 +850,54 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 16,
     opacity: 0.68,
+  },
+  projectLinkList: {
+    backgroundColor: Colors.dark.backgroundElement,
+    borderColor: "rgba(255, 255, 255, 0.09)",
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 7,
+    padding: Spacing.two,
+  },
+  projectLinkRow: {
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    borderColor: "rgba(255, 255, 255, 0.08)",
+    borderRadius: 7,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: Spacing.two,
+    minHeight: 56,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  projectLinkIcon: {
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    borderColor: "rgba(255, 255, 255, 0.1)",
+    borderRadius: 15,
+    borderWidth: 1,
+    flexShrink: 0,
+    height: 30,
+    justifyContent: "center",
+    width: 30,
+  },
+  projectLinkIconSponsor: {
+    backgroundColor: "rgba(255, 159, 192, 0.12)",
+    borderColor: "rgba(255, 159, 192, 0.22)",
+  },
+  projectLinkCopy: {
+    flex: 1,
+    gap: 2,
+    minWidth: 0,
+  },
+  projectLinkTitle: {
+    fontSize: 13,
+    lineHeight: 17,
+  },
+  projectLinkSubtitle: {
+    fontSize: 11,
+    lineHeight: 15,
   },
   versionFooter: {
     gap: 3,
