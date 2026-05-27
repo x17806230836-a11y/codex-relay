@@ -257,6 +257,62 @@ export default function SettingsScreen() {
         >
           <Animated.View layout={settingsLayoutTransition} style={styles.section}>
             <ThemedText type="small" themeColor="textSecondary" style={styles.sectionLabel}>
+              Project
+            </ThemedText>
+            <Animated.View layout={settingsLayoutTransition} style={styles.projectLinkList}>
+              <Pressable
+                accessibilityRole="link"
+                accessibilityLabel="Open Codex Relay GitHub repository"
+                onPress={() => openProjectLink(codexRelayRepositoryUrl)}
+                style={({ pressed }) => [styles.projectLinkRow, pressed && styles.pressed]}
+              >
+                <View style={styles.projectLinkIcon}>
+                  <FaGithub size={17} color={Colors.dark.text} />
+                </View>
+                <View style={styles.projectLinkCopy}>
+                  <ThemedText type="smallBold" style={styles.projectLinkTitle}>
+                    GitHub
+                  </ThemedText>
+                  <ThemedText
+                    type="code"
+                    themeColor="textSecondary"
+                    style={styles.projectLinkSubtitle}
+                    numberOfLines={1}
+                  >
+                    {codexRelayRepositoryLabel}
+                  </ThemedText>
+                </View>
+                <Icon name="externalLink" size={15} tintColor={Colors.dark.textSecondary} />
+              </Pressable>
+              <Pressable
+                accessibilityRole="link"
+                accessibilityLabel="Open gronxb GitHub Sponsors"
+                onPress={() => openProjectLink(codexRelaySponsorUrl)}
+                style={({ pressed }) => [styles.projectLinkRow, pressed && styles.pressed]}
+              >
+                <View style={[styles.projectLinkIcon, styles.projectLinkIconSponsor]}>
+                  <Heart size={16} color="#FF9FC0" fill="#FF9FC0" />
+                </View>
+                <View style={styles.projectLinkCopy}>
+                  <ThemedText type="smallBold" style={styles.projectLinkTitle}>
+                    Sponsor
+                  </ThemedText>
+                  <ThemedText
+                    type="code"
+                    themeColor="textSecondary"
+                    style={styles.projectLinkSubtitle}
+                    numberOfLines={1}
+                  >
+                    {codexRelaySponsorLabel}
+                  </ThemedText>
+                </View>
+                <Icon name="externalLink" size={15} tintColor={Colors.dark.textSecondary} />
+              </Pressable>
+            </Animated.View>
+          </Animated.View>
+
+          <Animated.View layout={settingsLayoutTransition} style={styles.section}>
+            <ThemedText type="small" themeColor="textSecondary" style={styles.sectionLabel}>
               Usage Limits
             </ThemedText>
             <Animated.View layout={settingsLayoutTransition} style={styles.usageCard}>
@@ -402,62 +458,6 @@ export default function SettingsScreen() {
                 </View>
               </View>
             </Pressable>
-          </Animated.View>
-
-          <Animated.View layout={settingsLayoutTransition} style={styles.section}>
-            <ThemedText type="small" themeColor="textSecondary" style={styles.sectionLabel}>
-              Project
-            </ThemedText>
-            <Animated.View layout={settingsLayoutTransition} style={styles.projectLinkList}>
-              <Pressable
-                accessibilityRole="link"
-                accessibilityLabel="Open Codex Relay GitHub repository"
-                onPress={() => openProjectLink(codexRelayRepositoryUrl)}
-                style={({ pressed }) => [styles.projectLinkRow, pressed && styles.pressed]}
-              >
-                <View style={styles.projectLinkIcon}>
-                  <FaGithub size={17} color={Colors.dark.text} />
-                </View>
-                <View style={styles.projectLinkCopy}>
-                  <ThemedText type="smallBold" style={styles.projectLinkTitle}>
-                    GitHub
-                  </ThemedText>
-                  <ThemedText
-                    type="code"
-                    themeColor="textSecondary"
-                    style={styles.projectLinkSubtitle}
-                    numberOfLines={1}
-                  >
-                    {codexRelayRepositoryLabel}
-                  </ThemedText>
-                </View>
-                <Icon name="externalLink" size={15} tintColor={Colors.dark.textSecondary} />
-              </Pressable>
-              <Pressable
-                accessibilityRole="link"
-                accessibilityLabel="Open gronxb GitHub Sponsors"
-                onPress={() => openProjectLink(codexRelaySponsorUrl)}
-                style={({ pressed }) => [styles.projectLinkRow, pressed && styles.pressed]}
-              >
-                <View style={[styles.projectLinkIcon, styles.projectLinkIconSponsor]}>
-                  <Heart size={16} color="#FF9FC0" fill="#FF9FC0" />
-                </View>
-                <View style={styles.projectLinkCopy}>
-                  <ThemedText type="smallBold" style={styles.projectLinkTitle}>
-                    Sponsor
-                  </ThemedText>
-                  <ThemedText
-                    type="code"
-                    themeColor="textSecondary"
-                    style={styles.projectLinkSubtitle}
-                    numberOfLines={1}
-                  >
-                    {codexRelaySponsorLabel}
-                  </ThemedText>
-                </View>
-                <Icon name="externalLink" size={15} tintColor={Colors.dark.textSecondary} />
-              </Pressable>
-            </Animated.View>
           </Animated.View>
 
           <Animated.View layout={settingsLayoutTransition} style={styles.versionFooter}>
