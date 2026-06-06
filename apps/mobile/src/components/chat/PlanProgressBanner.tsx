@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { Pressable, View } from "react-native";
 import Animated, {
   FadeIn,
-  LinearTransition,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
@@ -33,11 +32,7 @@ export function PlanProgressBanner({ progress }: { progress?: TimelinePlanProgre
   const activeStep = activePlanProgressStep(progress);
 
   return (
-    <Animated.View
-      entering={FadeIn.duration(160)}
-      layout={planProgressLayoutTransition}
-      style={styles.bannerHost}
-    >
+    <Animated.View entering={FadeIn.duration(160)} style={styles.bannerHost}>
       <Pressable
         accessibilityLabel={`Plan progress: ${completedStepCount} of ${stepCount} steps completed`}
         accessibilityRole="button"
@@ -49,27 +44,25 @@ export function PlanProgressBanner({ progress }: { progress?: TimelinePlanProgre
         }}
         style={({ pressed }) => [styles.banner, pressed && styles.bannerPressed]}
       >
-        <View style={styles.summaryRow}>
-          <View style={styles.summaryMarkerSlot}>
+        <View style={styles.summaryContent}>
+          <ThemedText type="code" style={styles.label}>
+            Plan
+          </ThemedText>
+          <View style={styles.summaryRow}>
             {activeStep ? <PlanProgressMarker status={activeStep.status} /> : null}
-          </View>
-          <View style={styles.titleGroup}>
-            <ThemedText type="code" style={styles.label}>
-              Plan
-            </ThemedText>
             <ThemedText type="small" numberOfLines={1} style={styles.summaryText}>
               {activeStep ? activeStep.text : "Updating plan"}
             </ThemedText>
-          </View>
-          <View style={styles.trailingGroup}>
-            <ThemedText type="code" style={styles.countText}>
-              {completedStepCount}/{stepCount}
-            </ThemedText>
-            <Icon
-              name={isExpanded ? "expand" : "chevronRight"}
-              size={16}
-              tintColor={Colors.dark.textSecondary}
-            />
+            <View style={styles.trailingGroup}>
+              <ThemedText type="code" style={styles.countText}>
+                {completedStepCount}/{stepCount}
+              </ThemedText>
+              <Icon
+                name={isExpanded ? "expand" : "chevronRight"}
+                size={16}
+                tintColor={Colors.dark.textSecondary}
+              />
+            </View>
           </View>
         </View>
       </Pressable>
@@ -147,7 +140,7 @@ function PlanProgressMarker({ status }: { status: TimelinePlanProgressStepStatus
 
 const styles = StyleSheet.create({
   banner: {
-    backgroundColor: "rgba(42, 42, 42, 0.92)",
+    backgroundColor: "rgba(42, 42, 42, 0.9)",
     borderColor: "rgba(255, 255, 255, 0.1)",
     borderRadius: 10,
     borderWidth: 1,
@@ -156,9 +149,10 @@ const styles = StyleSheet.create({
   },
   bannerHost: {
     elevation: 20,
-    marginBottom: Spacing.two,
-    marginHorizontal: Spacing.four,
-    position: "relative",
+    left: Spacing.four,
+    position: "absolute",
+    right: Spacing.four,
+    top: 58,
     zIndex: 20,
   },
   bannerPressed: {
@@ -194,7 +188,6 @@ const styles = StyleSheet.create({
     borderRadius: 7,
     height: 14,
     justifyContent: "center",
-    marginTop: 1,
     width: 14,
   },
   markerActive: {
@@ -213,10 +206,6 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     minHeight: 22,
   },
-  steps: {
-    gap: Spacing.one,
-    paddingTop: Spacing.one,
-  },
   stepText: {
     color: Colors.dark.text,
     flex: 1,
@@ -226,29 +215,22 @@ const styles = StyleSheet.create({
     color: Colors.dark.textSecondary,
   },
   summaryRow: {
-    alignItems: "flex-start",
+    alignItems: "center",
     flexDirection: "row",
     gap: Spacing.two,
   },
-  summaryMarkerSlot: {
-    paddingTop: 20,
-    width: 14,
+  summaryContent: {
+    gap: 2,
   },
   summaryText: {
     color: Colors.dark.text,
-    lineHeight: 20,
-  },
-  titleGroup: {
     flex: 1,
-    gap: 2,
+    lineHeight: 20,
     minWidth: 0,
   },
   trailingGroup: {
     alignItems: "center",
-    alignSelf: "center",
     flexDirection: "row",
     gap: Spacing.one,
   },
 });
-
-const planProgressLayoutTransition = LinearTransition.duration(160);
