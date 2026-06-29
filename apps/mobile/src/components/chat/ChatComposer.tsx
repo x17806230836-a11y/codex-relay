@@ -3139,7 +3139,7 @@ const styles = StyleSheet.create({
     opacity: 0.45,
   },
   queuePromptGroup: {
-    alignItems: "flex-start",
+    alignItems: "center",
     flex: 1,
     flexDirection: "row",
     gap: QUEUE_CONTENT_GAP,
