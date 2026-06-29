@@ -77,6 +77,13 @@ const PLAN_COMPOSER_PLACEHOLDER = "Ask Codex for a plan. Try $skills or @files."
 const SUGGESTION_ROW_ESTIMATED_SIZE = 44;
 const SUGGESTION_LIST_GAP = 2;
 const SUGGESTION_LIST_MAX_HEIGHT = 270;
+const QUEUE_LEADING_SLOT_SIZE = 28;
+const QUEUE_CONTENT_GAP = 8;
+const QUEUE_STEER_BUTTON_WIDTH = 80;
+const QUEUE_ICON_BUTTON_SIZE = 28;
+const QUEUE_ACTION_GAP = 6;
+const QUEUE_ACTIONS_WIDTH =
+  QUEUE_STEER_BUTTON_WIDTH + QUEUE_ICON_BUTTON_SIZE * 2 + QUEUE_ACTION_GAP * 2;
 const MENTION_INPUT_MARKDOWN_STYLE = {
   link: {
     color: "#7CC7FF",
@@ -1485,7 +1492,9 @@ const ComposerTopAccessoryPanel = memo(function ComposerTopAccessoryPanel({
           return (
             <View key={item.id} style={styles.queueRow}>
               <View style={styles.queuePromptGroup}>
-                <Icon name="chevronRight" size={12} tintColor={textSecondaryColor} />
+                <View style={styles.queuePromptIconSlot}>
+                  <Icon name="chevronRight" size={12} tintColor={textSecondaryColor} />
+                </View>
                 <View style={styles.queuePromptBody}>
                   <View style={styles.queuePromptMarkdown}>
                     <PromptMarkdownText
@@ -3050,14 +3059,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     flex: 1,
     flexDirection: "row",
-    gap: 8,
+    gap: QUEUE_CONTENT_GAP,
     minWidth: 0,
   },
   goalStatusIconSlot: {
     alignItems: "center",
-    height: 28,
+    height: QUEUE_LEADING_SLOT_SIZE,
     justifyContent: "center",
-    width: 28,
+    width: QUEUE_LEADING_SLOT_SIZE,
   },
   goalPromptBody: {
     flex: 1,
@@ -3133,8 +3142,14 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     flex: 1,
     flexDirection: "row",
-    gap: 6,
+    gap: QUEUE_CONTENT_GAP,
     minWidth: 0,
+  },
+  queuePromptIconSlot: {
+    alignItems: "center",
+    height: QUEUE_LEADING_SLOT_SIZE,
+    justifyContent: "center",
+    width: QUEUE_LEADING_SLOT_SIZE,
   },
   queuePromptBody: {
     flex: 1,
@@ -3152,10 +3167,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     flexShrink: 0,
     flexDirection: "row",
-    gap: 6,
+    gap: QUEUE_ACTION_GAP,
     justifyContent: "flex-end",
     height: 34,
-    width: 146,
+    width: QUEUE_ACTIONS_WIDTH,
   },
   queueSteerButton: {
     alignItems: "center",
@@ -3163,7 +3178,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     height: 28,
     justifyContent: "center",
-    width: 80,
+    width: QUEUE_STEER_BUTTON_WIDTH,
   },
   queueSteerPill: {
     alignItems: "center",
@@ -3175,7 +3190,7 @@ const styles = StyleSheet.create({
     gap: 4,
     height: 28,
     justifyContent: "center",
-    width: 80,
+    width: QUEUE_STEER_BUTTON_WIDTH,
   },
   queueSteerPillPressed: {
     backgroundColor: "rgba(255, 255, 255, 0.22)",
@@ -3193,9 +3208,9 @@ const styles = StyleSheet.create({
   queueIconButton: {
     alignItems: "center",
     flexShrink: 0,
-    height: 28,
+    height: QUEUE_ICON_BUTTON_SIZE,
     justifyContent: "center",
-    width: 28,
+    width: QUEUE_ICON_BUTTON_SIZE,
   },
   queueIconCircle: {
     alignItems: "center",
@@ -3203,9 +3218,9 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255, 255, 255, 0.2)",
     borderRadius: 10,
     borderWidth: 1,
-    height: 28,
+    height: QUEUE_ICON_BUTTON_SIZE,
     justifyContent: "center",
-    width: 28,
+    width: QUEUE_ICON_BUTTON_SIZE,
   },
   queueIconCirclePressed: {
     backgroundColor: "rgba(255, 255, 255, 0.2)",
