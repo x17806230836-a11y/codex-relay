@@ -3,8 +3,12 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import {
+  CodexModelSchema,
+  KnownReasoningEffortSchema,
+  ReasoningEffortSchema,
   WORKSPACE_PREVIEW_OPEN_PROTOCOL,
   apiPaths,
+  createOpenApiDocument,
   promptMarkdownWithSkills,
   WorkspacePreviewNavigationRequestSchema,
 } from "../src/api-schema.js";
@@ -22,6 +26,54 @@ const documentsSkill = {
     ".codex/plugins/cache/openai-primary-runtime/documents/skills/documents/SKILL.md",
   ),
 };
+
+describe("Codex model reasoning schemas", () => {
+  it.each(["max", "ultra"] as const)("accepts the %s reasoning effort", (effort) => {
+    expect(ReasoningEffortSchema.parse(effort)).toBe(effort);
+  });
+
+  it("preserves future reasoning efforts without treating them as legacy SDK values", () => {
+    expect(ReasoningEffortSchema.parse("beyond-ultra")).toBe("beyond-ultra");
+    expect(KnownReasoningEffortSchema.safeParse("beyond-ultra").success).toBe(false);
+  });
+
+  it("preserves detailed reasoning effort metadata", () => {
+    expect(
+      CodexModelSchema.parse({
+        id: "gpt-5.6-sol",
+        model: "gpt-5.6-sol",
+        displayName: "GPT-5.6-Sol",
+        defaultReasoningEffort: "low",
+        supportedReasoningEfforts: ["low", "max", "ultra"],
+        reasoningEffortOptions: [
+          { reasoningEffort: "low", description: "Fast responses" },
+          { reasoningEffort: "max", description: "Maximum reasoning depth" },
+          {
+            reasoningEffort: "ultra",
+            description: "Maximum reasoning with automatic task delegation",
+          },
+        ],
+      }),
+    ).toMatchObject({
+      supportedReasoningEfforts: ["low", "max", "ultra"],
+      reasoningEffortOptions: [
+        { reasoningEffort: "low", description: "Fast responses" },
+        { reasoningEffort: "max", description: "Maximum reasoning depth" },
+        {
+          reasoningEffort: "ultra",
+          description: "Maximum reasoning with automatic task delegation",
+        },
+      ],
+    });
+  });
+
+  it("declares every reasoning effort used by OpenAPI thread references", () => {
+    expect(createOpenApiDocument().components.schemas.ReasoningEffort).toEqual({
+      type: "string",
+      minLength: 1,
+    });
+  });
+});
 
 describe("promptMarkdownWithSkills", () => {
   it("preserves a skill mention before text", () => {

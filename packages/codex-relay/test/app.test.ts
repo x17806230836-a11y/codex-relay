@@ -446,8 +446,8 @@ describe("Codex Relay server routes", () => {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        model: "gpt-5.5",
-        reasoningEffort: "xhigh",
+        model: "gpt-5.6-sol",
+        reasoningEffort: "ultra",
         runtimeMode: "auto",
       }),
     });
@@ -481,14 +481,14 @@ describe("Codex Relay server routes", () => {
     expect(runResponse.status).toBe(200);
     expect(resumeOptions[0]).toMatchObject({
       approvalPolicy: "never",
-      model: "gpt-5.5",
-      modelReasoningEffort: "xhigh",
+      model: "gpt-5.6-sol",
+      modelReasoningEffort: "ultra",
       sandboxMode: "danger-full-access",
     });
     expect(runBody.thread).toMatchObject({
       approvalPolicy: "never",
-      model: "gpt-5.5",
-      reasoningEffort: "xhigh",
+      model: "gpt-5.6-sol",
+      reasoningEffort: "ultra",
       runtimeMode: "auto",
       sandboxMode: "danger-full-access",
     });
@@ -497,8 +497,8 @@ describe("Codex Relay server routes", () => {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        model: "gpt-5.4",
-        reasoningEffort: "low",
+        model: "gpt-5.6-luna",
+        reasoningEffort: "max",
         runtimeMode: "default",
       }),
     });
@@ -512,16 +512,35 @@ describe("Codex Relay server routes", () => {
     expect(followupResponse.status).toBe(200);
     expect(resumeOptions[1]).toMatchObject({
       approvalPolicy: "on-request",
-      model: "gpt-5.4",
-      modelReasoningEffort: "low",
+      model: "gpt-5.6-luna",
+      modelReasoningEffort: "max",
       sandboxMode: "workspace-write",
     });
     expect(followupBody.thread).toMatchObject({
       approvalPolicy: "on-request",
-      model: "gpt-5.4",
-      reasoningEffort: "low",
+      model: "gpt-5.6-luna",
+      reasoningEffort: "max",
       runtimeMode: "default",
       sandboxMode: "workspace-write",
+    });
+
+    await app.request("/v1/preferences", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ reasoningEffort: "beyond-ultra" }),
+    });
+    const futureEffortResponse = await app.request("/v1/threads/thread-1/runs", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ prompt: "Continue with a future effort" }),
+    });
+    const futureEffortBody = await futureEffortResponse.json();
+
+    expect(futureEffortResponse.status).toBe(200);
+    expect(resumeOptions[2]).not.toHaveProperty("modelReasoningEffort");
+    expect(futureEffortBody.thread).toMatchObject({
+      model: "gpt-5.6-luna",
+      reasoningEffort: "beyond-ultra",
     });
   });
 
@@ -2185,9 +2204,9 @@ describe("Codex Relay server routes", () => {
       method: "POST",
       body: JSON.stringify({
         collaborationMode: "plan",
-        model: "gpt-5.5",
+        model: "gpt-5.6-sol",
         prompt: "Plan this",
-        reasoningEffort: "high",
+        reasoningEffort: "ultra",
       }),
       headers: { "content-type": "application/json" },
     });
@@ -2200,8 +2219,8 @@ describe("Codex Relay server routes", () => {
           mode: "plan",
           settings: {
             developer_instructions: null,
-            model: "gpt-5.5",
-            reasoning_effort: "high",
+            model: "gpt-5.6-sol",
+            reasoning_effort: "ultra",
           },
         },
       }),
@@ -3416,9 +3435,9 @@ describe("Codex Relay server routes", () => {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        model: "gpt-5.5",
+        model: "gpt-5.6-luna",
         serviceTier: "priority",
-        reasoningEffort: "high",
+        reasoningEffort: "max",
         runtimeMode: "default",
       }),
     });
@@ -3440,8 +3459,8 @@ describe("Codex Relay server routes", () => {
     expect(streamResponse.status).toBe(200);
     expect(startTurn).toHaveBeenCalledWith(
       expect.objectContaining({
-        effort: "high",
-        model: "gpt-5.5",
+        effort: "max",
+        model: "gpt-5.6-luna",
         serviceTier: "priority",
       }),
     );
@@ -3692,6 +3711,149 @@ describe("Codex Relay server routes", () => {
     expect(body).toContain('"state":"completed"');
   });
 
+  it("streams current app-server collaboration items as subagent activity", async () => {
+    const workspacePath = await mkdtemp(join(tmpdir(), "codex-relay-workspace-"));
+    const notificationHandlers = new Set<(notification: unknown) => void>();
+    const now = Date.now() / 1000;
+    const startTurn = vi.fn<() => Promise<unknown>>(async () => {
+      queueMicrotask(() => {
+        for (const handler of notificationHandlers) {
+          handler({
+            method: "item/completed",
+            params: {
+              item: {
+                id: "collab-spawn",
+                type: "collabAgentToolCall",
+                tool: "spawnAgent",
+                status: "completed",
+                senderThreadId: "app-thread-subagents",
+                receiverThreadIds: ["agent-thread-1"],
+                prompt: "Inspect the package manager",
+                model: "gpt-5.6-sol",
+                reasoningEffort: "high",
+                agentsStates: {
+                  "agent-thread-1": { status: "running", message: null },
+                },
+              },
+              threadId: "app-thread-subagents",
+              turnId: "turn-subagents",
+            },
+          });
+          handler({
+            method: "item/completed",
+            params: {
+              item: {
+                id: "subagent-started",
+                type: "subAgentActivity",
+                kind: "started",
+                agentThreadId: "agent-thread-1",
+                agentPath: "package-inspector",
+              },
+              threadId: "app-thread-subagents",
+              turnId: "turn-subagents",
+            },
+          });
+          handler({
+            method: "item/completed",
+            params: {
+              item: { id: "assistant-subagents", text: "pnpm", type: "agentMessage" },
+              threadId: "app-thread-subagents",
+              turnId: "turn-subagents",
+            },
+          });
+          handler({
+            method: "turn/completed",
+            params: {
+              threadId: "app-thread-subagents",
+              turnId: "turn-subagents",
+            },
+          });
+        }
+      });
+      return {
+        id: "turn-subagents",
+        items: [],
+        status: "inProgress",
+        startedAt: now,
+        completedAt: null,
+      };
+    });
+    const appServer = {
+      onNotification(handler: (notification: unknown) => void) {
+        notificationHandlers.add(handler);
+        return () => notificationHandlers.delete(handler);
+      },
+      onRequest() {
+        return () => undefined;
+      },
+      startThread: vi.fn<() => Promise<unknown>>(async () => ({
+        id: "app-thread-subagents",
+        createdAt: now,
+        cwd: workspacePath,
+        modelProvider: "openai",
+        name: "Subagent thread",
+        preview: "Subagent thread",
+        source: "app",
+        status: "idle",
+        turns: [],
+        updatedAt: now,
+      })),
+      startTurn,
+    };
+    const app = createApp({
+      appServer: appServer as never,
+      codex: createMockCodex(),
+      workspacePath,
+    });
+
+    await app.request("/v1/threads", {
+      method: "POST",
+      body: JSON.stringify({ title: "Subagent thread" }),
+      headers: { "content-type": "application/json" },
+    });
+    const response = await app.request("/v1/threads/app-thread-subagents/runs/stream", {
+      method: "POST",
+      body: JSON.stringify({
+        prompt: "Use a subagent to inspect the package manager",
+        reasoningEffort: "ultra",
+      }),
+      headers: { "content-type": "application/json" },
+    });
+    const body = await response.text();
+    const events = body
+      .split("\n")
+      .filter((line) => line.startsWith("data: "))
+      .map((line) => JSON.parse(line.slice("data: ".length)) as Record<string, unknown>);
+    const createdMessages = events
+      .filter((event) => event.type === "thread.message.created")
+      .map((event) => event.message);
+
+    expect(response.status).toBe(200);
+    expect(startTurn).toHaveBeenCalledWith(expect.objectContaining({ effort: "ultra" }));
+    expect(createdMessages).toContainEqual(
+      expect.objectContaining({
+        id: "collab-spawn",
+        kind: "subagentAction",
+        details: expect.objectContaining({
+          receiverThreadIds: ["agent-thread-1"],
+          status: "completed",
+          tool: "spawnAgent",
+        }),
+      }),
+    );
+    expect(createdMessages).toContainEqual(
+      expect.objectContaining({
+        id: "subagent-started",
+        kind: "subagentAction",
+        details: expect.objectContaining({
+          agentPath: "package-inspector",
+          agentThreadId: "agent-thread-1",
+          activityKind: "started",
+        }),
+      }),
+    );
+  });
+
   it("normalizes cumulative app-server deltas before streaming them to mobile", async () => {
     const workspacePath = await mkdtemp(join(tmpdir(), "codex-relay-workspace-"));
     const notificationHandlers = new Set<(notification: unknown) => void>();
@@ -3834,6 +3996,320 @@ describe("Codex Relay server routes", () => {
     expect(body).toContain("codex_empty_response");
     expect(body).toContain("Codex finished this turn without returning a plan or response.");
     expect(body).toContain('"state":"failed"');
+  });
+
+  it("fails asynchronously completed app-server turns without any response", async () => {
+    const workspacePath = await mkdtemp(join(tmpdir(), "codex-relay-workspace-"));
+    const notificationHandlers = new Set<(notification: unknown) => void>();
+    const now = Date.now() / 1000;
+    const appServer = {
+      onNotification(handler: (notification: unknown) => void) {
+        notificationHandlers.add(handler);
+        return () => notificationHandlers.delete(handler);
+      },
+      onRequest() {
+        return () => undefined;
+      },
+      startThread: vi.fn<() => Promise<unknown>>(async () => ({
+        id: "app-thread-empty-async-turn",
+        createdAt: now,
+        cwd: workspacePath,
+        modelProvider: "gpt-5.5",
+        name: "Empty async turn",
+        preview: "Empty async turn",
+        source: "app",
+        status: "idle",
+        turns: [],
+        updatedAt: now,
+      })),
+      startTurn: vi.fn<() => Promise<unknown>>(async () => {
+        queueMicrotask(() => {
+          for (const handler of notificationHandlers) {
+            handler({
+              method: "turn/completed",
+              params: {
+                threadId: "app-thread-empty-async-turn",
+                turn: {
+                  id: "turn-empty-async",
+                  items: [],
+                  status: "completed",
+                  error: null,
+                  startedAt: now,
+                  completedAt: now,
+                },
+              },
+            });
+          }
+        });
+        return {
+          id: "turn-empty-async",
+          items: [],
+          status: "inProgress",
+          startedAt: now,
+          completedAt: null,
+        };
+      }),
+    };
+    const app = createApp({
+      appServer: appServer as never,
+      codex: createMockCodex(),
+      workspacePath,
+    });
+
+    await app.request("/v1/threads", {
+      method: "POST",
+      body: JSON.stringify({ title: "Empty async turn" }),
+      headers: { "content-type": "application/json" },
+    });
+    const response = await app.request("/v1/threads/app-thread-empty-async-turn/runs/stream", {
+      method: "POST",
+      body: JSON.stringify({ prompt: "Return a response" }),
+      headers: { "content-type": "application/json" },
+    });
+    const body = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(body).toContain("thread.error");
+    expect(body).toContain("codex_empty_response");
+    expect(body).toContain("Codex finished this turn without returning a plan or response.");
+    expect(body).toContain('"state":"failed"');
+  });
+
+  it("streams app-server usage-limit failures as persistent error messages", async () => {
+    const workspacePath = await mkdtemp(join(tmpdir(), "codex-relay-workspace-"));
+    const notificationHandlers = new Set<(notification: unknown) => void>();
+    const now = Date.now() / 1000;
+    const usageLimitMessage = "You've hit your usage limit. Try again later.";
+    const appServer = {
+      onNotification(handler: (notification: unknown) => void) {
+        notificationHandlers.add(handler);
+        return () => notificationHandlers.delete(handler);
+      },
+      onRequest() {
+        return () => undefined;
+      },
+      startThread: vi.fn<() => Promise<unknown>>(async () => ({
+        id: "app-thread-usage-limited",
+        createdAt: now,
+        cwd: workspacePath,
+        modelProvider: "gpt-5.6-sol",
+        name: "Usage limited",
+        preview: "Usage limited",
+        source: "app",
+        status: "idle",
+        turns: [],
+        updatedAt: now,
+      })),
+      startTurn: vi.fn<() => Promise<unknown>>(async () => {
+        queueMicrotask(() => {
+          for (const handler of notificationHandlers) {
+            handler({
+              method: "error",
+              params: {
+                error: { message: usageLimitMessage },
+                threadId: "app-thread-usage-limited",
+                turnId: "turn-usage-limited",
+              },
+            });
+            handler({
+              method: "turn/completed",
+              params: {
+                threadId: "app-thread-usage-limited",
+                turn: {
+                  id: "turn-usage-limited",
+                  items: [],
+                  status: "failed",
+                  error: {
+                    message: usageLimitMessage,
+                    codexErrorInfo: "usageLimitExceeded",
+                  },
+                  startedAt: now,
+                  completedAt: now,
+                },
+              },
+            });
+          }
+        });
+        return {
+          id: "turn-usage-limited",
+          items: [],
+          status: "inProgress",
+          startedAt: now,
+          completedAt: null,
+        };
+      }),
+    };
+    const app = createApp({
+      appServer: appServer as never,
+      codex: createMockCodex(),
+      workspacePath,
+    });
+
+    await app.request("/v1/threads", {
+      method: "POST",
+      body: JSON.stringify({ title: "Usage limited" }),
+      headers: { "content-type": "application/json" },
+    });
+    const response = await app.request("/v1/threads/app-thread-usage-limited/runs/stream", {
+      method: "POST",
+      body: JSON.stringify({ model: "gpt-5.6-sol", prompt: "Return a response" }),
+      headers: { "content-type": "application/json" },
+    });
+    const body = await response.text();
+    const events = body
+      .split("\n")
+      .filter((line) => line.startsWith("data: "))
+      .map((line) => JSON.parse(line.slice("data: ".length)) as Record<string, unknown>);
+
+    expect(response.status).toBe(200);
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "thread.message.created",
+        message: expect.objectContaining({ role: "error", content: usageLimitMessage }),
+      }),
+    );
+    expect(body).toContain("thread.error");
+    expect(body).toContain(usageLimitMessage);
+    expect(body).toContain('"state":"failed"');
+  });
+
+  it("streams directly returned app-server failures as persistent error messages", async () => {
+    const workspacePath = await mkdtemp(join(tmpdir(), "codex-relay-workspace-"));
+    const now = Date.now() / 1000;
+    const failureMessage = "The selected model is temporarily unavailable.";
+    const appServer = {
+      onNotification() {
+        return () => undefined;
+      },
+      onRequest() {
+        return () => undefined;
+      },
+      startThread: vi.fn<() => Promise<unknown>>(async () => ({
+        id: "app-thread-direct-failure",
+        createdAt: now,
+        cwd: workspacePath,
+        modelProvider: "gpt-5.6-sol",
+        name: "Direct failure",
+        preview: "Direct failure",
+        source: "app",
+        status: "idle",
+        turns: [],
+        updatedAt: now,
+      })),
+      startTurn: vi.fn<() => Promise<unknown>>(async () => ({
+        id: "turn-direct-failure",
+        items: [],
+        status: "failed",
+        error: { message: failureMessage },
+        startedAt: now,
+        completedAt: now,
+      })),
+    };
+    const app = createApp({
+      appServer: appServer as never,
+      codex: createMockCodex(),
+      workspacePath,
+    });
+
+    await app.request("/v1/threads", {
+      method: "POST",
+      body: JSON.stringify({ title: "Direct failure" }),
+      headers: { "content-type": "application/json" },
+    });
+    const response = await app.request("/v1/threads/app-thread-direct-failure/runs/stream", {
+      method: "POST",
+      body: JSON.stringify({ model: "gpt-5.6-sol", prompt: "Return a response" }),
+      headers: { "content-type": "application/json" },
+    });
+    const body = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(body).toContain("thread.message.created");
+    expect(body).toContain("thread.error");
+    expect(body).toContain("codex_run_failed");
+    expect(body).toContain(failureMessage);
+    expect(body).not.toContain("codex_empty_response");
+  });
+
+  it("hands off queued input after a directly returned terminal turn", async () => {
+    const workspacePath = await mkdtemp(join(tmpdir(), "codex-relay-workspace-"));
+    const now = Date.now() / 1000;
+    let releaseFirstTurn: (() => void) | undefined;
+    const firstTurnReleased = new Promise<void>((resolve) => {
+      releaseFirstTurn = resolve;
+    });
+    let turnCount = 0;
+    const startTurn = vi.fn<() => Promise<unknown>>(async () => {
+      turnCount += 1;
+      if (turnCount === 1) {
+        await firstTurnReleased;
+      }
+      return {
+        id: `turn-direct-queue-${turnCount}`,
+        items: [
+          {
+            id: `assistant-direct-queue-${turnCount}`,
+            text: turnCount === 1 ? "first direct reply" : "queued direct reply",
+            type: "agentMessage",
+          },
+        ],
+        status: "completed",
+        startedAt: now,
+        completedAt: now,
+      };
+    });
+    const appServer = {
+      onNotification() {
+        return () => undefined;
+      },
+      onRequest() {
+        return () => undefined;
+      },
+      startThread: vi.fn<() => Promise<unknown>>(async () => ({
+        id: "app-thread-direct-queue",
+        createdAt: now,
+        cwd: workspacePath,
+        modelProvider: "gpt-5.5",
+        name: "Direct queue",
+        preview: "Direct queue",
+        source: "app",
+        status: "idle",
+        turns: [],
+        updatedAt: now,
+      })),
+      startTurn,
+    };
+    const app = createApp({
+      appServer: appServer as never,
+      codex: createMockCodex(),
+      workspacePath,
+    });
+
+    await app.request("/v1/threads", {
+      method: "POST",
+      body: JSON.stringify({ title: "Direct queue" }),
+      headers: { "content-type": "application/json" },
+    });
+    const streamResponse = await app.request("/v1/threads/app-thread-direct-queue/runs/stream", {
+      method: "POST",
+      body: JSON.stringify({ prompt: "Initial direct run" }),
+      headers: { "content-type": "application/json" },
+    });
+    await waitUntil(() => expect(startTurn).toHaveBeenCalledTimes(1));
+    const queuedResponse = await app.request("/v1/threads/app-thread-direct-queue/input", {
+      method: "POST",
+      body: JSON.stringify({ prompt: "Queued direct run" }),
+      headers: { "content-type": "application/json" },
+    });
+    releaseFirstTurn?.();
+    const body = await streamResponse.text();
+
+    expect(queuedResponse.status).toBe(202);
+    expect(startTurn).toHaveBeenCalledTimes(2);
+    expect(body).toContain("first direct reply");
+    expect(body).toContain("queued direct reply");
+    expect(body).not.toContain("thread.error");
+    expect(body).toContain('"state":"completed"');
   });
 
   it("does not stream terminal thread status before late assistant items", async () => {
@@ -4863,6 +5339,102 @@ describe("Codex Relay server routes", () => {
       });
     }
     expect(await streamResponse.text()).toContain("thread.state.changed");
+  });
+
+  it("validates empty responses independently for each queued app-server turn", async () => {
+    const workspacePath = await mkdtemp(join(tmpdir(), "codex-relay-workspace-"));
+    const notificationHandlers = new Set<(notification: unknown) => void>();
+    let turnCount = 0;
+    const startTurn = vi.fn<() => Promise<unknown>>(async () => {
+      turnCount += 1;
+      return {
+        id: `turn-per-turn-output-${turnCount}`,
+        items: [],
+        status: "running",
+        startedAt: null,
+        completedAt: null,
+      };
+    });
+    const now = Date.now() / 1000;
+    const appServer = {
+      onNotification(handler: (notification: unknown) => void) {
+        notificationHandlers.add(handler);
+        return () => notificationHandlers.delete(handler);
+      },
+      onRequest() {
+        return () => undefined;
+      },
+      startThread: vi.fn<() => Promise<unknown>>(async () => ({
+        id: "app-thread-per-turn-output",
+        createdAt: now,
+        cwd: workspacePath,
+        modelProvider: "gpt-5.5",
+        name: "Per-turn output",
+        preview: "Per-turn output",
+        source: "app",
+        status: "idle",
+        turns: [],
+        updatedAt: now,
+      })),
+      startTurn,
+    };
+    const app = createApp({
+      appServer: appServer as never,
+      codex: createMockCodex(),
+      workspacePath,
+    });
+
+    await app.request("/v1/threads", {
+      method: "POST",
+      body: JSON.stringify({ title: "Per-turn output" }),
+      headers: { "content-type": "application/json" },
+    });
+    const streamResponse = await app.request("/v1/threads/app-thread-per-turn-output/runs/stream", {
+      method: "POST",
+      body: JSON.stringify({ prompt: "Initial output" }),
+      headers: { "content-type": "application/json" },
+    });
+    const queuedResponse = await app.request("/v1/threads/app-thread-per-turn-output/input", {
+      method: "POST",
+      body: JSON.stringify({ prompt: "Queued empty output" }),
+      headers: { "content-type": "application/json" },
+    });
+
+    for (const handler of notificationHandlers) {
+      handler({
+        method: "item/completed",
+        params: {
+          item: { id: "assistant-first-output", text: "first output", type: "agentMessage" },
+          threadId: "app-thread-per-turn-output",
+          turnId: "turn-per-turn-output-1",
+        },
+      });
+      handler({
+        method: "turn/completed",
+        params: {
+          status: "completed",
+          threadId: "app-thread-per-turn-output",
+          turnId: "turn-per-turn-output-1",
+        },
+      });
+    }
+    await waitUntil(() => expect(startTurn).toHaveBeenCalledTimes(2));
+    for (const handler of notificationHandlers) {
+      handler({
+        method: "turn/completed",
+        params: {
+          status: "completed",
+          threadId: "app-thread-per-turn-output",
+          turnId: "turn-per-turn-output-2",
+        },
+      });
+    }
+    const body = await streamResponse.text();
+
+    expect(queuedResponse.status).toBe(202);
+    expect(body).toContain("first output");
+    expect(body).toContain("codex_empty_response");
+    expect(body).toContain('"state":"failed"');
   });
 
   it("runs a prompt on a known thread", async () => {

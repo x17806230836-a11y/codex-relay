@@ -13,15 +13,72 @@ export type TimelinePlanProgress = {
   readonly steps: readonly TimelinePlanProgressStep[];
 };
 
+export type TimelineSubagentStatus = "running" | "completed" | "interrupted" | "failed";
+
+export type TimelineSubagent = {
+  readonly id: string;
+  readonly label: string;
+  readonly status: TimelineSubagentStatus;
+};
+
+export type TimelineSubagentSummary = {
+  readonly agents: readonly TimelineSubagent[];
+};
+
+const MAX_SUMMARIZED_SUBAGENTS = 64;
+
 export function splitTimelinePlanProgress(messages: readonly ChatMessage[], isRunning: boolean) {
-  const visibleMessages: ChatMessage[] = [];
   let progress: TimelinePlanProgress | undefined;
+  let progressMessage: ChatMessage | undefined;
+  let progressMessageIndex = -1;
+
+  for (const [index, message] of messages.entries()) {
+    if (isTimelinePlanProgressMessage(message) && isRunning) {
+      progress = planProgressFromMessage(message);
+      progressMessage = message;
+      progressMessageIndex = index;
+    }
+  }
+
+  const latestUserIndex = latestUserMessageIndex(messages, messages.length - 1);
+  if (progressMessageIndex >= 0 && latestUserIndex > progressMessageIndex) {
+    progress = undefined;
+    progressMessage = undefined;
+    progressMessageIndex = -1;
+  }
+
+  const turnStartIndex = progressMessage
+    ? latestUserMessageIndex(messages, progressMessageIndex)
+    : -1;
+  const turnEndIndex = progressMessage
+    ? nextUserMessageIndex(messages, progressMessageIndex)
+    : messages.length;
+  const planTurnId = progressMessage?.turnId ?? messages[turnStartIndex]?.turnId;
+  const subagentMap = new Map<string, TimelineSubagent>();
+  const summarizedSubagentMessageIds = new Set<string>();
+
+  if (progress && progressMessage) {
+    for (const [index, message] of messages.entries()) {
+      if (
+        message.kind === "subagentAction" &&
+        isMessageInPlanTurn(message, index, planTurnId, turnStartIndex, turnEndIndex)
+      ) {
+        if (foldSubagentMessage(subagentMap, message)) {
+          summarizedSubagentMessageIds.add(message.id);
+        }
+      }
+    }
+  }
+
+  const subagents = subagentMap.size > 0 ? { agents: [...subagentMap.values()] } : undefined;
+  const visibleMessages: ChatMessage[] = [];
 
   for (const message of messages) {
     if (isTimelinePlanProgressMessage(message)) {
-      if (isRunning) {
-        progress = planProgressFromMessage(message);
-      }
+      continue;
+    }
+
+    if (message.kind === "subagentAction" && summarizedSubagentMessageIds.has(message.id)) {
       continue;
     }
 
@@ -30,6 +87,7 @@ export function splitTimelinePlanProgress(messages: readonly ChatMessage[], isRu
 
   return {
     progress,
+    subagents,
     visibleMessages,
   };
 }
@@ -170,4 +228,183 @@ function stringRecordValue(value: unknown, key: string) {
   }
 
   return undefined;
+}
+
+function latestUserMessageIndex(messages: readonly ChatMessage[], beforeIndex: number) {
+  for (let index = beforeIndex; index >= 0; index -= 1) {
+    if (messages[index]?.role === "user") {
+      return index;
+    }
+  }
+
+  return 0;
+}
+
+function nextUserMessageIndex(messages: readonly ChatMessage[], afterIndex: number) {
+  for (let index = afterIndex + 1; index < messages.length; index += 1) {
+    if (messages[index]?.role === "user") {
+      return index;
+    }
+  }
+
+  return messages.length;
+}
+
+function isMessageInPlanTurn(
+  message: ChatMessage,
+  messageIndex: number,
+  planTurnId: string | undefined,
+  turnStartIndex: number,
+  turnEndIndex: number,
+) {
+  if (message.turnId || planTurnId) {
+    return message.turnId === planTurnId;
+  }
+
+  return messageIndex >= turnStartIndex && messageIndex < turnEndIndex;
+}
+
+function foldSubagentMessage(subagents: Map<string, TimelineSubagent>, message: ChatMessage) {
+  const detailsType = stringRecordValue(message.details, "type");
+
+  if (detailsType === "subAgentActivity") {
+    const activityKind = stringRecordValue(message.details, "activityKind");
+    if (
+      activityKind !== "started" &&
+      activityKind !== "interacted" &&
+      activityKind !== "interrupted"
+    ) {
+      return false;
+    }
+
+    const agentThreadId = stringRecordValue(message.details, "agentThreadId");
+    if (!agentThreadId) {
+      return false;
+    }
+
+    const agentPath = stringRecordValue(message.details, "agentPath");
+    const current = subagents.get(agentThreadId);
+    const nextStatus = activityKind === "interrupted" ? "interrupted" : "running";
+    return upsertSubagent(subagents, agentThreadId, {
+      label: agentPath,
+      status:
+        current && current.status !== "running" && nextStatus === "running"
+          ? current.status
+          : nextStatus,
+    });
+  }
+
+  if (detailsType !== "collabAgentToolCall") {
+    return false;
+  }
+
+  const tool = stringRecordValue(message.details, "tool");
+  const callStatus = stringRecordValue(message.details, "status");
+  if (!isCollabTool(tool) || !isCollabCallStatus(callStatus)) {
+    return false;
+  }
+
+  const receiverThreadIds = stringArrayRecordValue(message.details, "receiverThreadIds");
+  if (!receiverThreadIds || receiverThreadIds.length === 0) {
+    return false;
+  }
+
+  const newAgentCount = new Set(
+    receiverThreadIds.filter((receiverThreadId) => !subagents.has(receiverThreadId)),
+  ).size;
+  if (subagents.size + newAgentCount > MAX_SUMMARIZED_SUBAGENTS) {
+    return false;
+  }
+
+  const agentStates = recordValue(message.details, "agentsStates");
+  for (const receiverThreadId of receiverThreadIds) {
+    const agentState = recordValue(agentStates, receiverThreadId);
+    const reportedStatus = normalizeSubagentStatus(stringRecordValue(agentState, "status"));
+    const fallbackStatus =
+      callStatus === "failed"
+        ? "failed"
+        : tool === "closeAgent" && callStatus === "completed"
+          ? "completed"
+          : "running";
+    upsertSubagent(subagents, receiverThreadId, {
+      status: reportedStatus ?? fallbackStatus,
+    });
+  }
+
+  return true;
+}
+
+function isCollabTool(value: string | undefined) {
+  return (
+    value === "spawnAgent" ||
+    value === "sendInput" ||
+    value === "resumeAgent" ||
+    value === "wait" ||
+    value === "closeAgent"
+  );
+}
+
+function isCollabCallStatus(value: string | undefined) {
+  return value === "inProgress" || value === "completed" || value === "failed";
+}
+
+function upsertSubagent(
+  subagents: Map<string, TimelineSubagent>,
+  id: string,
+  next: { readonly label?: string; readonly status: TimelineSubagentStatus },
+) {
+  const current = subagents.get(id);
+  if (!current && subagents.size >= MAX_SUMMARIZED_SUBAGENTS) {
+    return false;
+  }
+
+  subagents.set(id, {
+    id,
+    label: next.label ?? current?.label ?? `Subagent ${subagents.size + 1}`,
+    status: next.status,
+  });
+  return true;
+}
+
+function normalizeSubagentStatus(value: string | undefined): TimelineSubagentStatus | undefined {
+  switch (value?.trim().toLowerCase()) {
+    case "pendinginit":
+    case "pending_init":
+    case "running":
+      return "running";
+    case "completed":
+    case "shutdown":
+      return "completed";
+    case "interrupted":
+    case "cancelled":
+    case "canceled":
+      return "interrupted";
+    case "errored":
+    case "failed":
+    case "notfound":
+    case "not_found":
+      return "failed";
+    case undefined:
+      return undefined;
+    default:
+      return undefined;
+  }
+}
+
+function stringArrayRecordValue(value: unknown, key: string) {
+  const entry = recordValue(value, key);
+  if (!Array.isArray(entry) || entry.length > MAX_SUMMARIZED_SUBAGENTS) {
+    return undefined;
+  }
+
+  return entry.filter((item): item is string => typeof item === "string" && item.length > 0);
+}
+
+function recordValue(value: unknown, key: string): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+  return Object.prototype.hasOwnProperty.call(record, key) ? record[key] : undefined;
 }

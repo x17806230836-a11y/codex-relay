@@ -97,12 +97,10 @@ import {
   serverStateQueryFns,
   setQueuedInputsState,
   setRuntimePreferencesResponseState,
-  setRuntimePreferencesState,
   setStatusState,
   setThreadDetailState,
   setThreadRunningState,
   setThreadsState,
-  setWorkspaceRuntimePreferencesState,
   steerQueuedThreadInputServerState,
   submitThreadInputServerState,
   updateThreadGoalServerState,
@@ -139,6 +137,15 @@ import {
 import { addWorkspacePreviewTab } from "@/state/workspace-preview-store";
 
 import { ChatControls } from "./ChatControls";
+import {
+  modelForSelection,
+  normalizeRuntimePreferencesForModels,
+  reasoningEffortForModel as resolveReasoningEffortForModel,
+} from "./model-picker-options";
+import {
+  createRuntimePreferencesCoordinator,
+  type RuntimePreferencesStage,
+} from "./runtime-preferences-coordinator";
 import { ChatShell } from "./ChatShell";
 import type { ChatShellAction } from "./ChatShellHeader";
 import { ConnectionBanner } from "./ConnectionBanner";
@@ -206,6 +213,7 @@ export function ChatScreen({ initialPairingUrl }: ChatScreenProps = {}) {
   const [previewPaneWidth, setPreviewPaneWidth] = useState(DEFAULT_PREVIEW_PANE_WIDTH);
   const [scannerMessage, setScannerMessage] = useState("Point the camera at the connection QR.");
   const copyToastIdRef = useRef(0);
+  const runtimePreferencesCoordinator = useMemo(createRuntimePreferencesCoordinator, []);
   const [copyToast, setCopyToast] = useState<{ id: number } | undefined>(undefined);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const usesExpandedSidebar = width >= EXPANDED_DRAWER_BREAKPOINT;
@@ -214,6 +222,10 @@ export function ChatScreen({ initialPairingUrl }: ChatScreenProps = {}) {
     openDrawer?: () => void;
   }>();
   const queryClient = useQueryClient();
+  const fetchCurrentStatus = useCallback(async () => {
+    await runtimePreferencesCoordinator.afterUpdates();
+    return fetchStatusState(queryClient);
+  }, [queryClient, runtimePreferencesCoordinator]);
   const checkoutWorkspaceBranchMutation = useMutation({
     mutationFn: (body: Parameters<typeof checkoutWorkspaceBranchServerState>[1]) =>
       checkoutWorkspaceBranchServerState(queryClient, body),
@@ -324,26 +336,48 @@ export function ChatScreen({ initialPairingUrl }: ChatScreenProps = {}) {
     },
   });
   const updateRuntimePreferencesMutation = useMutation({
-    mutationFn: (body: Parameters<typeof updateRuntimePreferencesServerState>[0]) =>
-      updateRuntimePreferencesServerState(body),
-    onSuccess(response) {
-      setRuntimePreferencesResponseState(queryClient, response);
-      const workspacePreferences = response.workspacePath
-        ? (response.runtimePreferencesByWorkspacePath[response.workspacePath] ??
-          response.preferences)
-        : undefined;
-      if (response.workspacePath && workspacePreferences) {
-        setOptimisticRuntimePreferencesByWorkspacePath((current) => ({
-          ...current,
-          [response.workspacePath as string]: workspacePreferences,
-        }));
-      } else {
-        setOptimisticRuntimePreferences(response.preferences);
-      }
-      queryClient.setQueryData(serverStateKeys.status(), (current) => current);
+    mutationFn(input: {
+      body: Parameters<typeof updateRuntimePreferencesServerState>[0];
+      stage: RuntimePreferencesStage;
+    }) {
+      return runtimePreferencesCoordinator.enqueue(async () => {
+        await queryClient.cancelQueries({ queryKey: serverStateKeys.status() });
+        return updateRuntimePreferencesServerState(input.body);
+      });
     },
-    onError(caught) {
-      syncPairedSessionState();
+    onSuccess(response, input) {
+      setRuntimePreferencesResponseState(queryClient, response);
+      if (!runtimePreferencesCoordinator.settle(input.stage)) {
+        return;
+      }
+      const targetWorkspacePath = input.body.workspacePath;
+      if (targetWorkspacePath) {
+        setOptimisticRuntimePreferencesByWorkspacePath((current) => {
+          const next = { ...current };
+          delete next[targetWorkspacePath];
+          return next;
+        });
+      } else {
+        setOptimisticRuntimePreferences(undefined);
+      }
+    },
+    onError(caught, input) {
+      if (!runtimePreferencesCoordinator.settle(input.stage)) {
+        return;
+      }
+      const targetWorkspacePath = input.body.workspacePath;
+      if (targetWorkspacePath) {
+        setOptimisticRuntimePreferencesByWorkspacePath((current) => {
+          const next = { ...current };
+          delete next[targetWorkspacePath];
+          return next;
+        });
+      } else {
+        setOptimisticRuntimePreferences(undefined);
+      }
+      if (syncPairedSessionState()) {
+        void fetchCurrentStatus().catch(() => undefined);
+      }
       setConnection("offline", errorMessage(caught));
     },
   });
@@ -665,7 +699,7 @@ export function ChatScreen({ initialPairingUrl }: ChatScreenProps = {}) {
         await refreshSession().catch(() => false);
         syncPairedSessionState();
         const [status, response, modelsResponse, rateLimitsResponse] = await Promise.all([
-          fetchStatusState(queryClient),
+          fetchCurrentStatus(),
           fetchThreadsState(queryClient),
           fetchModelsState(queryClient),
           fetchRateLimitsState(queryClient).catch(() => undefined),
@@ -716,14 +750,21 @@ export function ChatScreen({ initialPairingUrl }: ChatScreenProps = {}) {
       }
     });
     return request;
-  }, [applyStatusFromServer, loadThread, queryClient, syncPairedSessionState, syncThreadSnapshot]);
+  }, [
+    applyStatusFromServer,
+    fetchCurrentStatus,
+    loadThread,
+    queryClient,
+    syncPairedSessionState,
+    syncThreadSnapshot,
+  ]);
 
   const keepConnectionIfSessionIsValid = useCallback(
     async (fallbackError: string) => {
       try {
         await refreshSession().catch(() => false);
         syncPairedSessionState();
-        const status = await fetchStatusState(queryClient);
+        const status = await fetchCurrentStatus();
         applyStatusFromServer(status);
         setConnection("connected");
       } catch (caught) {
@@ -731,7 +772,7 @@ export function ChatScreen({ initialPairingUrl }: ChatScreenProps = {}) {
         setConnection("offline", caught instanceof Error ? caught.message : fallbackError);
       }
     },
-    [applyStatusFromServer, queryClient, syncPairedSessionState],
+    [applyStatusFromServer, fetchCurrentStatus, syncPairedSessionState],
   );
 
   const recoverThreadAfterStreamLoss = useCallback(
@@ -1898,6 +1939,10 @@ export function ChatScreen({ initialPairingUrl }: ChatScreenProps = {}) {
   function currentRuntimePreferences(): RuntimePreferences {
     const thread = activeThread;
     const targetWorkspacePath = thread?.cwd ?? workspacePath;
+    const stagedPreferences = runtimePreferencesCoordinator.current(targetWorkspacePath ?? "");
+    if (stagedPreferences) {
+      return runtimePreferencesWithAvailableServiceTier(stagedPreferences);
+    }
     const cachedStatus =
       queryClient.getQueryData<Awaited<ReturnType<typeof serverStateQueryFns.status>>>(
         serverStateKeys.status(),
@@ -1921,18 +1966,10 @@ export function ChatScreen({ initialPairingUrl }: ChatScreenProps = {}) {
     modelId: string | undefined,
     preferredReasoningEffort: ReasoningEffort | undefined,
   ) {
-    const model = models.find((candidate) => candidate.model === modelId);
-    const supported = model?.supportedReasoningEfforts ?? [];
-    if (supported.length === 0) {
-      return undefined;
-    }
-    if (preferredReasoningEffort && supported.includes(preferredReasoningEffort)) {
-      return preferredReasoningEffort;
-    }
-    if (model?.defaultReasoningEffort && supported.includes(model.defaultReasoningEffort)) {
-      return model.defaultReasoningEffort;
-    }
-    return supported.includes("medium") ? "medium" : supported[0];
+    return resolveReasoningEffortForModel(
+      models.find((candidate) => candidate.model === modelId),
+      preferredReasoningEffort,
+    );
   }
 
   function serviceTierForModel(
@@ -1947,14 +1984,7 @@ export function ChatScreen({ initialPairingUrl }: ChatScreenProps = {}) {
   }
 
   function runtimePreferencesWithAvailableServiceTier(preferences: RuntimePreferences) {
-    const modelId = preferences.model ?? models[0]?.model;
-    if (!preferences.serviceTier || serviceTierForModel(modelId, preferences.serviceTier)) {
-      return preferences;
-    }
-    return {
-      ...preferences,
-      serviceTier: undefined,
-    };
+    return normalizeRuntimePreferencesForModels(models, preferences);
   }
 
   function commitRuntimePreferences(preferences: RuntimePreferences) {
@@ -1964,17 +1994,20 @@ export function ChatScreen({ initialPairingUrl }: ChatScreenProps = {}) {
         ...current,
         [targetWorkspacePath]: preferences,
       }));
-      setWorkspaceRuntimePreferencesState(queryClient, targetWorkspacePath, preferences);
     } else {
       setOptimisticRuntimePreferences(preferences);
-      setRuntimePreferencesState(queryClient, preferences);
     }
+    const scopeKey = targetWorkspacePath ?? "";
+    const stage = runtimePreferencesCoordinator.stage(scopeKey, preferences);
     updateRuntimePreferencesMutation.mutate({
-      model: preferences.model ?? null,
-      serviceTier: preferences.serviceTier ?? null,
-      reasoningEffort: preferences.reasoningEffort ?? null,
-      runtimeMode: preferences.runtimeMode,
-      ...(targetWorkspacePath ? { workspacePath: targetWorkspacePath } : {}),
+      body: {
+        model: preferences.model ?? null,
+        serviceTier: preferences.serviceTier ?? null,
+        reasoningEffort: preferences.reasoningEffort ?? null,
+        runtimeMode: preferences.runtimeMode,
+        ...(targetWorkspacePath ? { workspacePath: targetWorkspacePath } : {}),
+      },
+      stage,
     });
   }
 
@@ -1986,26 +2019,36 @@ export function ChatScreen({ initialPairingUrl }: ChatScreenProps = {}) {
     });
   }
 
-  function changeSelectedModel(model: string) {
+  function changeSelectedModel(model: string, reasoningEffort?: ReasoningEffort) {
     const currentPreferences = currentRuntimePreferences();
     const serviceTier = serviceTierForModel(model, currentPreferences.serviceTier);
     commitRuntimePreferences({
       ...currentPreferences,
       model,
       serviceTier,
-      reasoningEffort: reasoningEffortForModel(model, currentPreferences.reasoningEffort),
+      reasoningEffort: reasoningEffortForModel(
+        model,
+        reasoningEffort ?? currentPreferences.reasoningEffort,
+      ),
     });
   }
 
   function changeSelectedServiceTier(serviceTier: string | undefined) {
     const currentPreferences = currentRuntimePreferences();
-    const model = serviceTier
-      ? (currentPreferences.model ?? models[0]?.model)
-      : currentPreferences.model;
+    const selectedModel = currentPreferences.model;
+    const catalogModel = modelForSelection(models, selectedModel);
+    const model = serviceTier ? (selectedModel ?? catalogModel?.model) : selectedModel;
+    const hasUnknownSelectedModel = Boolean(selectedModel && !catalogModel);
+    const isCurrentCustomServiceTier = Boolean(
+      serviceTier && serviceTier === currentPreferences.serviceTier,
+    );
     commitRuntimePreferences({
       ...currentPreferences,
       ...(model ? { model } : {}),
-      serviceTier: serviceTierForModel(model, serviceTier),
+      serviceTier:
+        hasUnknownSelectedModel || isCurrentCustomServiceTier
+          ? serviceTier
+          : serviceTierForModel(model, serviceTier),
     });
   }
 

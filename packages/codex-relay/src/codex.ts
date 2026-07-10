@@ -1,4 +1,5 @@
 import { Codex } from "@openai/codex-sdk";
+import type { KnownReasoningEffort } from "./api-schema.js";
 
 export type CodexRunResult = unknown;
 
@@ -16,7 +17,7 @@ export type CodexThread = {
 export type CodexThreadOptions = {
   approvalPolicy?: "never" | "on-request" | "on-failure" | "untrusted";
   model?: string;
-  modelReasoningEffort?: "minimal" | "low" | "medium" | "high" | "xhigh";
+  modelReasoningEffort?: KnownReasoningEffort;
   sandboxMode?: "read-only" | "workspace-write" | "danger-full-access";
   workingDirectory?: string;
   skipGitRepoCheck?: boolean;

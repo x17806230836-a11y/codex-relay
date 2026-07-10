@@ -30,7 +30,16 @@ export const ChatMessageKindSchema = z.enum([
 export const ApprovalModeSchema = z.enum(["on-request", "on-failure", "never"]);
 export const RuntimeModeSchema = z.enum(["default", "auto", "full-access", "on-request"]);
 export const SandboxModeSchema = z.enum(["workspace-write", "danger-full-access", "read-only"]);
-export const ReasoningEffortSchema = z.enum(["minimal", "low", "medium", "high", "xhigh"]);
+export const KnownReasoningEffortSchema = z.enum([
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+  "ultra",
+]);
+export const ReasoningEffortSchema = z.string().trim().min(1);
 export const ThreadCollaborationModeSchema = z.enum(["default", "plan"]);
 export const ThreadGoalStatusSchema = z.enum([
   "active",
@@ -94,6 +103,14 @@ export const CodexModelSchema = z.object({
   isDefault: z.boolean().default(false),
   defaultReasoningEffort: ReasoningEffortSchema.optional(),
   supportedReasoningEfforts: z.array(ReasoningEffortSchema).default([]),
+  reasoningEffortOptions: z
+    .array(
+      z.object({
+        reasoningEffort: ReasoningEffortSchema,
+        description: z.string().optional(),
+      }),
+    )
+    .default([]),
   serviceTiers: z
     .array(
       z.object({
@@ -718,6 +735,7 @@ export type ChatMessageRole = z.infer<typeof ChatMessageRoleSchema>;
 export type ChatMessageState = z.infer<typeof ChatMessageStateSchema>;
 export type ChatMessageKind = z.infer<typeof ChatMessageKindSchema>;
 export type ApprovalMode = z.infer<typeof ApprovalModeSchema>;
+export type KnownReasoningEffort = z.infer<typeof KnownReasoningEffortSchema>;
 export type ReasoningEffort = z.infer<typeof ReasoningEffortSchema>;
 export type RuntimeMode = z.infer<typeof RuntimeModeSchema>;
 export type SandboxMode = z.infer<typeof SandboxModeSchema>;
@@ -1301,6 +1319,7 @@ export function createOpenApiDocument() {
     components: {
       schemas: {
         ThreadState: { type: "string", enum: ThreadStateSchema.options },
+        ReasoningEffort: { type: "string", minLength: 1 },
         ChatMessage: {
           type: "object",
           required: ["id", "threadId", "role", "content", "createdAt"],
@@ -1437,7 +1456,7 @@ export function createOpenApiDocument() {
             },
             reasoningEffort: {
               type: "string",
-              enum: ["minimal", "low", "medium", "high", "xhigh"],
+              minLength: 1,
             },
           },
         },
@@ -1454,7 +1473,7 @@ export function createOpenApiDocument() {
             },
             reasoningEffort: {
               type: "string",
-              enum: ["minimal", "low", "medium", "high", "xhigh"],
+              minLength: 1,
               nullable: true,
             },
           },

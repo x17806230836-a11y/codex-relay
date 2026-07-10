@@ -7,7 +7,7 @@ import {
   type BottomSheetBackdropProps,
 } from "@gorhom/bottom-sheet";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Pressable, useWindowDimensions, View } from "react-native";
+import { Pressable, View, useWindowDimensions } from "react-native";
 import { KeyboardController } from "react-native-keyboard-controller";
 import { StyleSheet } from "react-native-unistyles";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -15,13 +15,15 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Fonts } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import { hapticSelection } from "@/lib/haptics";
-
-import { Icon, type AppIconName } from "./icon";
+import { Icon } from "./icon";
 import { Text } from "./text";
+
+export { SheetActionRow, SheetSelectedDot } from "./bottom-sheet-action-row";
 
 const KEYBOARD_DISMISS_PRESENT_FALLBACK_MS = 360;
 
 export function AppBottomSheet({
+  backAccessibilityLabel = "Back",
   children,
   androidKeyboardInputMode = "adjustResize",
   enableDynamicSizing = true,
@@ -30,6 +32,7 @@ export function AppBottomSheet({
   initialSnapIndex = 0,
   keyboardBehavior = "interactive",
   keyboardBlurBehavior = "restore",
+  onBack,
   onClose,
   scrollable = true,
   subtitle,
@@ -37,6 +40,7 @@ export function AppBottomSheet({
   visible,
 }: {
   androidKeyboardInputMode?: "adjustPan" | "adjustResize";
+  backAccessibilityLabel?: string;
   children: ReactNode;
   enableDynamicSizing?: boolean;
   enableBlurKeyboardOnGesture?: boolean;
@@ -44,6 +48,7 @@ export function AppBottomSheet({
   initialSnapIndex?: number;
   keyboardBehavior?: "interactive" | "extend" | "fillParent";
   keyboardBlurBehavior?: "none" | "restore";
+  onBack?: () => void;
   onClose: () => void;
   scrollable?: boolean;
   subtitle?: string;
@@ -145,10 +150,27 @@ export function AppBottomSheet({
 
   const content = (
     <>
-      <Text style={[styles.title, { color: theme.text }]}>{title}</Text>
-      {subtitle ? (
-        <Text style={[styles.subtitle, { color: theme.textSecondary }]}>{subtitle}</Text>
-      ) : null}
+      <View style={styles.header}>
+        {onBack ? (
+          <Pressable
+            accessibilityLabel={backAccessibilityLabel}
+            accessibilityRole="button"
+            onPress={() => {
+              hapticSelection();
+              onBack();
+            }}
+            style={({ pressed }) => [styles.backButton, pressed ? styles.backPressed : null]}
+          >
+            <Icon name="back" size={18} tintColor={theme.text} />
+          </Pressable>
+        ) : null}
+        <View style={styles.headerCopy}>
+          <Text style={[styles.title, { color: theme.text }]}>{title}</Text>
+          {subtitle ? (
+            <Text style={[styles.subtitle, { color: theme.textSecondaryStrong }]}>{subtitle}</Text>
+          ) : null}
+        </View>
+      </View>
       {children}
     </>
   );
@@ -226,88 +248,6 @@ function dismissKeyboard() {
   void KeyboardController.dismiss().catch(() => undefined);
 }
 
-export function SheetActionRow({
-  accessibilityLabel,
-  disabled,
-  icon,
-  iconBackgroundColor,
-  iconTintColor,
-  onPress,
-  selected,
-  selectedTitleColor,
-  subtitle,
-  title,
-  trailing,
-}: {
-  accessibilityLabel: string;
-  disabled?: boolean;
-  icon: AppIconName;
-  iconBackgroundColor?: string;
-  iconTintColor?: string;
-  onPress?: () => void;
-  selected?: boolean;
-  selectedTitleColor?: string;
-  subtitle?: string;
-  title: string;
-  trailing?: ReactNode;
-}) {
-  const theme = useTheme();
-  const tintColor = disabled
-    ? theme.textSecondary
-    : (iconTintColor ?? (selected ? theme.text : theme.textSecondary));
-  const titleColor = disabled
-    ? theme.textSecondary
-    : selectedTitleColor && selected
-      ? selectedTitleColor
-      : theme.text;
-
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
-      accessibilityState={{ disabled, selected }}
-      disabled={disabled}
-      onPress={
-        onPress
-          ? () => {
-              hapticSelection();
-              onPress();
-            }
-          : undefined
-      }
-      style={[
-        styles.actionRow,
-        selected && { backgroundColor: theme.backgroundSelected },
-        disabled && styles.disabled,
-      ]}
-    >
-      <View
-        style={[
-          styles.actionIcon,
-          iconBackgroundColor ? { backgroundColor: iconBackgroundColor } : undefined,
-        ]}
-      >
-        <Icon name={icon} size={18} tintColor={tintColor} />
-      </View>
-      <View style={styles.actionCopy}>
-        <Text numberOfLines={1} style={[styles.actionTitle, { color: titleColor }]}>
-          {title}
-        </Text>
-        {subtitle ? (
-          <Text numberOfLines={1} style={[styles.actionSubtitle, { color: theme.textSecondary }]}>
-            {subtitle}
-          </Text>
-        ) : null}
-      </View>
-      {trailing ? <View style={styles.trailing}>{trailing}</View> : null}
-    </Pressable>
-  );
-}
-
-export function SheetSelectedDot({ selected }: { selected?: boolean }) {
-  return <View style={[styles.selectedDot, !selected && styles.unselectedDot]} />;
-}
-
 const styles = StyleSheet.create({
   background: {
     borderTopLeftRadius: 18,
@@ -326,6 +266,26 @@ const styles = StyleSheet.create({
     height: 4,
     width: 38,
   },
+  header: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+  },
+  headerCopy: {
+    flex: 1,
+    gap: 2,
+    minWidth: 0,
+  },
+  backButton: {
+    alignItems: "center",
+    height: 44,
+    justifyContent: "center",
+    marginLeft: -8,
+    marginRight: -2,
+    width: 44,
+  },
+  backPressed: {
+    opacity: 0.62,
+  },
   title: {
     fontFamily: Fonts.sansBold,
     fontSize: 15,
@@ -337,7 +297,6 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.sans,
     fontSize: 12,
     lineHeight: 16,
-    opacity: 0.74,
     paddingBottom: 8,
     paddingHorizontal: 6,
   },
@@ -345,60 +304,5 @@ const styles = StyleSheet.create({
     alignSelf: "stretch",
     gap: 2,
     paddingHorizontal: 14,
-  },
-  actionRow: {
-    alignItems: "center",
-    alignSelf: "stretch",
-    borderRadius: 12,
-    flexDirection: "row",
-    minHeight: 58,
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-    width: "100%",
-  },
-  disabled: {
-    opacity: 0.5,
-  },
-  actionIcon: {
-    alignItems: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
-    borderRadius: 16,
-    height: 32,
-    justifyContent: "center",
-    marginRight: 12,
-    width: 32,
-  },
-  actionCopy: {
-    alignSelf: "stretch",
-    flexBasis: 0,
-    flexGrow: 1,
-    flexShrink: 1,
-    justifyContent: "center",
-    minWidth: 0,
-  },
-  actionTitle: {
-    fontFamily: Fonts.sansSemiBold,
-    fontSize: 14,
-    lineHeight: 18,
-  },
-  actionSubtitle: {
-    fontFamily: Fonts.sans,
-    fontSize: 12,
-    lineHeight: 16,
-    opacity: 0.76,
-  },
-  trailing: {
-    marginLeft: 12,
-  },
-  selectedDot: {
-    backgroundColor: "#F3F4F6",
-    borderRadius: 6,
-    height: 12,
-    width: 12,
-  },
-  unselectedDot: {
-    backgroundColor: "transparent",
-    borderColor: "rgba(243, 244, 246, 0.32)",
-    borderWidth: 1,
   },
 });

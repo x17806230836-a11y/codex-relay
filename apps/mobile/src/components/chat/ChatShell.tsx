@@ -120,10 +120,11 @@ export function ChatShell({
   const insets = useSafeAreaInsets();
   const [isKeyboardLayoutFrozen, setKeyboardLayoutFrozen] = useState(false);
   const [queuedPromptPanelHeight, setQueuedPromptPanelHeight] = useState(0);
-  const { progress: planProgress, visibleMessages } = useMemo(
-    () => splitTimelinePlanProgress(messages, isRunning),
-    [isRunning, messages],
-  );
+  const {
+    progress: planProgress,
+    subagents: planSubagents,
+    visibleMessages,
+  } = useMemo(() => splitTimelinePlanProgress(messages, isRunning), [isRunning, messages]);
   const implementablePlanMessageId = useMemo(
     () => (!isRunning ? implementablePlanId(messages) : undefined),
     [isRunning, messages],
@@ -154,7 +155,7 @@ export function ChatShell({
             trailingActions={trailingActions}
           />
 
-          <PlanProgressBanner progress={planProgress} />
+          <PlanProgressBanner progress={planProgress} subagents={planSubagents} />
 
           {banner}
 

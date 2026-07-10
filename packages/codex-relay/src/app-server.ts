@@ -37,6 +37,10 @@ export type AppServerTurn = {
   id: string;
   items: AppServerThreadItem[];
   status: unknown;
+  error?: {
+    codexErrorInfo?: string;
+    message?: string;
+  } | null;
   startedAt: number | null;
   completedAt: number | null;
 };
@@ -97,6 +101,25 @@ export type AppServerThreadItem =
       patch?: string | null;
     }
   | { type: "mcpToolCall"; id: string; server: string; tool: string; status?: string | null }
+  | {
+      type: "collabAgentToolCall";
+      id: string;
+      tool: "spawnAgent" | "sendInput" | "resumeAgent" | "wait" | "closeAgent";
+      status: "inProgress" | "completed" | "failed";
+      senderThreadId: string;
+      receiverThreadIds: string[];
+      prompt: string | null;
+      model: string | null;
+      reasoningEffort: string | null;
+      agentsStates: Record<string, { status: string; message: string | null } | undefined>;
+    }
+  | {
+      type: "subAgentActivity";
+      id: string;
+      kind: "started" | "interacted" | "interrupted";
+      agentThreadId: string;
+      agentPath: string;
+    }
   | { type: "webSearch"; id: string; query: string; status?: string | null }
   | { type: string; id: string };
 
@@ -107,7 +130,7 @@ export type AppServerModel = {
   description?: string;
   isDefault?: boolean;
   defaultReasoningEffort?: string;
-  supportedReasoningEfforts?: Array<{ reasoningEffort: string }>;
+  supportedReasoningEfforts?: Array<{ reasoningEffort: string; description?: string }>;
   additionalSpeedTiers?: string[];
   serviceTiers?: Array<{ id: string; name: string; description?: string }>;
 };

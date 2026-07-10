@@ -142,6 +142,59 @@ liveDescribe("live mobile stream contract", () => {
     expect(assistantMessage?.state).toBe("completed");
     expect(assistantMessage?.content.toLowerCase()).toContain("relay-live-second-ok");
   }, 120_000);
+
+  it("round-trips real Ultra delegation as mobile subagent activity", async () => {
+    const workspacePath = await mkdtemp(join(tmpdir(), "codex-relay-live-workspace-"));
+    appServer = new CodexAppServerClient();
+    const app = createApp({
+      appServer,
+      workspacePath,
+    });
+    let threadId: string | undefined;
+
+    try {
+      const createResponse = await app.request("/v1/threads", {
+        method: "POST",
+        body: JSON.stringify({
+          model: "gpt-5.6-sol",
+          runtimeMode: "full-access",
+          title: "Live Ultra delegation contract",
+        }),
+        headers: { "content-type": "application/json" },
+      });
+      const createPayload = await createResponse.json();
+      threadId = createPayload.thread.id as string;
+
+      const response = await app.request(`/v1/threads/${threadId}/runs/stream`, {
+        method: "POST",
+        body: JSON.stringify({
+          model: "gpt-5.6-sol",
+          prompt:
+            "Use exactly one subagent to independently answer 17 + 25. Return only the final number.",
+          reasoningEffort: "ultra",
+          runtimeMode: "full-access",
+        }),
+        headers: { "content-type": "application/json" },
+      });
+      const body = await response.text();
+      const consumed = consumeAsMobileChatStream(body, threadId);
+      const messages = chatStore$.messagesByThreadId[threadId].peek() ?? [];
+      const subagentMessages = messages.filter((message) => message.kind === "subagentAction");
+      const assistantMessage = [...messages]
+        .reverse()
+        .find((message) => message.role === "assistant");
+
+      expect(response.status).toBe(200);
+      expect(consumed.errors).toEqual([]);
+      expect(consumed.terminalThreadIds).toContain(threadId);
+      expect(subagentMessages.length).toBeGreaterThan(0);
+      expect(assistantMessage?.content).toContain("42");
+    } finally {
+      if (threadId) {
+        await app.request(`/v1/threads/${threadId}`, { method: "DELETE" });
+      }
+    }
+  }, 240_000);
 });
 
 function consumeAsMobileChatStream(body: string, threadId: string) {

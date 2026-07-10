@@ -17,6 +17,8 @@ import {
   PairResponseSchema,
   QueuedThreadInputActionResponseSchema,
   RateLimitsResponseSchema,
+  KnownReasoningEffortSchema,
+  ReasoningEffortSchema,
   ResolveApprovalRequestSchema,
   ResolveApprovalResponseSchema,
   RunThreadRequestSchema,
@@ -3270,7 +3272,9 @@ async function streamRunningAppServerThread(input: {
 }) {
   let activeTurnId: string | undefined;
   let assistantMessageId: string | undefined;
+  let observedInputRequest = false;
   let observedTurnActivity = false;
+  let producedTurnOutput = false;
   let threadSummary = input.threads.get(input.threadId);
 
   const cleanupRequestHandler = input.appServer.onRequest((request) => {
@@ -3288,6 +3292,8 @@ async function streamRunningAppServerThread(input: {
       void input.appServer.rejectRequest(request.id, -32602, "Approval request is malformed.");
       return;
     }
+
+    observedInputRequest = true;
 
     if (approval.kind === "structuredUserInput") {
       const pending = {
@@ -3404,6 +3410,9 @@ async function streamRunningAppServerThread(input: {
             if (!message) {
               return;
             }
+            if (message.role !== "user") {
+              producedTurnOutput = true;
+            }
             if (message.role === "assistant") {
               assistantMessageId = message.id;
             }
@@ -3437,6 +3446,7 @@ async function streamRunningAppServerThread(input: {
               });
             }
             assistantMessageId = itemId;
+            producedTurnOutput = true;
             const patch = appendMessageDelta(
               input.messagesByThreadId,
               input.threadId,
@@ -3460,6 +3470,7 @@ async function streamRunningAppServerThread(input: {
           }
           case "turn/plan/updated": {
             observedTurnActivity = true;
+            producedTurnOutput = true;
             const content = planContentFromRecord(params);
             const message = appendMessage(input.messagesByThreadId, input.threadId, {
               role: "status",
@@ -3491,6 +3502,20 @@ async function streamRunningAppServerThread(input: {
               threadId: input.threadId,
               turnId: firstString(params, ["turnId"]) ?? activeTurnId,
             });
+            if (state === "completed" && !producedTurnOutput && !observedInputRequest) {
+              sendEmptyAppServerTurnError({
+                activeTurnId,
+                controller: input.controller,
+                encoder: input.encoder,
+                messagesByThreadId: input.messagesByThreadId,
+                secureSession: input.secureSession,
+                threadId: input.threadId,
+                threads: input.threads,
+              });
+              cleanupNotificationHandler();
+              resolve();
+              return;
+            }
             if (assistantMessageId) {
               const completedMessage = updateMessage(
                 input.messagesByThreadId,
@@ -3513,13 +3538,25 @@ async function streamRunningAppServerThread(input: {
               thread: threadSummary,
             });
             if (state === "failed") {
+              const errorBody = apiError(
+                "codex_run_failed",
+                threadSummary.lastError ?? "Codex turn did not complete.",
+              );
+              const message = appendMessage(input.messagesByThreadId, input.threadId, {
+                role: "error",
+                content: errorBody.error.message,
+                state: "failed",
+                turnId: activeTurnId,
+              });
+              sendSse(input.controller, input.encoder, input.secureSession, {
+                type: "thread.message.created",
+                thread: threadSummary,
+                message,
+              });
               sendSse(input.controller, input.encoder, input.secureSession, {
                 type: "thread.error",
                 thread: threadSummary,
-                error: apiError(
-                  "codex_run_failed",
-                  threadSummary.lastError ?? "Codex turn did not complete.",
-                ).error,
+                error: errorBody.error,
               });
             }
             cleanupNotificationHandler();
@@ -3600,6 +3637,7 @@ async function runAppServerPromptStreamed(input: {
   );
   const prompt = input.prompt;
   let handedOffToQueuedTurn = false;
+  let observedInputRequest = false;
   let producedTurnOutput = false;
 
   let userMessage = appendMessage(input.messagesByThreadId, activeThreadId, {
@@ -3640,6 +3678,8 @@ async function runAppServerPromptStreamed(input: {
       void input.appServer.rejectRequest(request.id, -32602, "Approval request is malformed.");
       return;
     }
+
+    observedInputRequest = true;
 
     if (approval.kind === "structuredUserInput") {
       const pending = {
@@ -3690,7 +3730,206 @@ async function runAppServerPromptStreamed(input: {
   });
 
   let cleanupNotificationHandler = (): void => undefined;
+  let resolveCompleted = (): void => undefined;
+  let rejectCompleted = (_error: unknown): void => undefined;
+  const finalizedTurnIds = new Set<string>();
+
+  function resetTurnTracking() {
+    activeTurnId = undefined;
+    assistantMessageId = undefined;
+    observedInputRequest = false;
+    producedTurnOutput = false;
+  }
+
+  function finishTerminalTurn(options: {
+    lastError?: string;
+    method: string;
+    state: "completed" | "failed";
+    turnId?: string;
+  }) {
+    const terminalTurnId = options.turnId ?? activeTurnId;
+    if (terminalTurnId && finalizedTurnIds.has(terminalTurnId)) {
+      return;
+    }
+    if (terminalTurnId) {
+      finalizedTurnIds.add(terminalTurnId);
+      activeTurnId = terminalTurnId;
+    }
+
+    relayDebugLog("app_server.turn.terminal", {
+      method: options.method,
+      state: options.state,
+      threadId: activeThreadId,
+      turnId: terminalTurnId,
+    });
+    input.activeAppServerTurnIdsByThreadId.delete(activeThreadId);
+
+    const hasQueuedInput = (input.queuedInputsByThreadId.get(activeThreadId)?.length ?? 0) > 0;
+    if (
+      options.state === "completed" &&
+      !producedTurnOutput &&
+      !observedInputRequest &&
+      !hasQueuedInput
+    ) {
+      sendEmptyAppServerTurnError({
+        activeTurnId: terminalTurnId,
+        controller: input.controller,
+        encoder: input.encoder,
+        messagesByThreadId: input.messagesByThreadId,
+        secureSession: input.secureSession,
+        threadId: activeThreadId,
+        threads: input.threads,
+      });
+      input.steeringThreads.delete(activeThreadId);
+      cleanupNotificationHandler();
+      resolveCompleted();
+      return;
+    }
+
+    if (assistantMessageId) {
+      const completedMessage = updateMessage(
+        input.messagesByThreadId,
+        activeThreadId,
+        assistantMessageId,
+        { state: "completed" },
+      );
+      sendSse(input.controller, input.encoder, input.secureSession, {
+        type: "thread.message.completed",
+        thread: threadSummary,
+        message: completedMessage,
+      });
+    }
+
+    const nextQueuedInput =
+      options.state === "completed"
+        ? shiftQueuedInput(input.queuedInputsByThreadId, activeThreadId)
+        : undefined;
+    threadSummary = updateThread(input.threads, input.messagesByThreadId, activeThreadId, {
+      state: nextQueuedInput ? "running" : options.state,
+      lastError: nextQueuedInput ? undefined : options.lastError,
+      ...(nextQueuedInput
+        ? {
+            lastPrompt: promptWithAttachmentReferences(
+              nextQueuedInput.prompt,
+              nextQueuedInput.attachments,
+            ),
+            ...runtimeMetadataFromOptions(nextQueuedInput.runOptions),
+          }
+        : {}),
+    });
+    sendSse(input.controller, input.encoder, input.secureSession, {
+      type: "thread.state.changed",
+      thread: threadSummary,
+    });
+
+    if (options.state === "failed") {
+      const errorBody = apiError(
+        "codex_run_failed",
+        options.lastError ?? "Codex turn did not complete.",
+      );
+      const message = appendMessage(input.messagesByThreadId, activeThreadId, {
+        role: "error",
+        content: errorBody.error.message,
+        state: "failed",
+        turnId: terminalTurnId,
+      });
+      sendSse(input.controller, input.encoder, input.secureSession, {
+        type: "thread.message.created",
+        thread: threadSummary,
+        message,
+      });
+      sendSse(input.controller, input.encoder, input.secureSession, {
+        type: "thread.error",
+        thread: threadSummary,
+        error: errorBody.error,
+      });
+      input.steeringThreads.delete(activeThreadId);
+      cleanupNotificationHandler();
+      resolveCompleted();
+      return;
+    }
+
+    if (nextQueuedInput) {
+      handedOffToQueuedTurn = true;
+      resetTurnTracking();
+      input.steeringThreads.add(activeThreadId);
+      void startAppServerTurn(input.appServer, activeThreadId, nextQueuedInput)
+        .then(processReturnedTurn)
+        .catch((error: unknown) => {
+          cleanupNotificationHandler();
+          rejectCompleted(error);
+        });
+      return;
+    }
+
+    input.steeringThreads.delete(activeThreadId);
+    cleanupNotificationHandler();
+    resolveCompleted();
+  }
+
+  function processReturnedTurn(turn: AppServerTurn) {
+    if (finalizedTurnIds.has(turn.id)) {
+      return;
+    }
+    activeTurnId = turn.id;
+    input.activeAppServerTurnIdsByThreadId.set(activeThreadId, turn.id);
+    const turnIsRunning = isAppServerTurnRunning(turn);
+
+    for (const item of turn.items) {
+      const canonicalUserMessage = replaceDuplicateInitialUserMessage(
+        input.messagesByThreadId,
+        activeThreadId,
+        turn.id,
+        item,
+        userMessage.id,
+        displayPrompt,
+      );
+      if (canonicalUserMessage) {
+        userMessage = canonicalUserMessage;
+        continue;
+      }
+      const message = upsertAppServerItemMessage(
+        input.messagesByThreadId,
+        activeThreadId,
+        turn.id,
+        item,
+      );
+      if (!message) {
+        continue;
+      }
+      if (message.role !== "user") {
+        producedTurnOutput = true;
+      }
+      if (message.role === "assistant" && turnIsRunning) {
+        assistantMessageId = message.id;
+      }
+      threadSummary = updateThread(input.threads, input.messagesByThreadId, activeThreadId, {
+        state: "running",
+        lastResult: message.role === "assistant" ? message.content : undefined,
+      });
+      sendSse(input.controller, input.encoder, input.secureSession, {
+        type: message.role === "assistant" ? "thread.message.completed" : "thread.message.created",
+        thread: threadSummary,
+        message,
+      });
+    }
+
+    if (turnIsRunning) {
+      return;
+    }
+    const params = { turn };
+    const state = terminalTurnState("turn/completed", params);
+    finishTerminalTurn({
+      lastError: state === "failed" ? turnErrorMessage(params) : undefined,
+      method: "turn/returned",
+      state,
+      turnId: turn.id,
+    });
+  }
+
   const completed = new Promise<void>((resolve, reject) => {
+    resolveCompleted = resolve;
+    rejectCompleted = reject;
     cleanupNotificationHandler = input.appServer.onNotification((notification) => {
       const params = recordParams(notification);
       const threadId = firstString(params, ["threadId"]);
@@ -3763,7 +4002,9 @@ async function runAppServerPromptStreamed(input: {
             if (!message) {
               return;
             }
-            producedTurnOutput = true;
+            if (message.role !== "user") {
+              producedTurnOutput = true;
+            }
             if (message.role === "assistant") {
               assistantMessageId = message.id;
             }
@@ -3844,87 +4085,14 @@ async function runAppServerPromptStreamed(input: {
           case "turn/completed":
           case "turn/failed": {
             const state = terminalTurnState(notification.method, params);
-            relayDebugLog("app_server.turn.terminal", {
+            const terminalTurnId =
+              firstString(params, ["turnId"]) ?? turnIdFromParams(params) ?? activeTurnId;
+            finishTerminalTurn({
+              lastError: state === "failed" ? turnErrorMessage(params) : undefined,
               method: notification.method,
               state,
-              threadId: activeThreadId,
-              turnId: firstString(params, ["turnId"]) ?? activeTurnId,
+              turnId: terminalTurnId,
             });
-            input.activeAppServerTurnIdsByThreadId.delete(activeThreadId);
-            if (assistantMessageId) {
-              const completedMessage = updateMessage(
-                input.messagesByThreadId,
-                activeThreadId,
-                assistantMessageId,
-                { state: "completed" },
-              );
-              sendSse(input.controller, input.encoder, input.secureSession, {
-                type: "thread.message.completed",
-                thread: threadSummary,
-                message: completedMessage,
-              });
-            }
-            const lastError = state === "failed" ? turnErrorMessage(params) : undefined;
-            const nextQueuedInput =
-              state === "completed"
-                ? shiftQueuedInput(input.queuedInputsByThreadId, activeThreadId)
-                : undefined;
-            threadSummary = updateThread(input.threads, input.messagesByThreadId, activeThreadId, {
-              state: nextQueuedInput ? "running" : state,
-              lastError: nextQueuedInput ? undefined : lastError,
-              ...(nextQueuedInput
-                ? {
-                    lastPrompt: promptWithAttachmentReferences(
-                      nextQueuedInput.prompt,
-                      nextQueuedInput.attachments,
-                    ),
-                    ...runtimeMetadataFromOptions(nextQueuedInput.runOptions),
-                  }
-                : {}),
-            });
-            sendSse(input.controller, input.encoder, input.secureSession, {
-              type: "thread.state.changed",
-              thread: threadSummary,
-            });
-            if (state === "failed") {
-              const errorBody = apiError(
-                "codex_run_failed",
-                lastError ?? "Codex turn did not complete.",
-              );
-              appendMessage(input.messagesByThreadId, activeThreadId, {
-                role: "error",
-                content: errorBody.error.message,
-                state: "failed",
-                turnId: activeTurnId,
-              });
-              sendSse(input.controller, input.encoder, input.secureSession, {
-                type: "thread.error",
-                thread: threadSummary,
-                error: errorBody.error,
-              });
-              input.steeringThreads.delete(activeThreadId);
-              cleanupNotificationHandler();
-              resolve();
-              return;
-            }
-            if (nextQueuedInput) {
-              handedOffToQueuedTurn = true;
-              assistantMessageId = undefined;
-              input.steeringThreads.add(activeThreadId);
-              void startAppServerTurn(input.appServer, activeThreadId, nextQueuedInput)
-                .then((turn) => {
-                  activeTurnId = turn.id;
-                  input.activeAppServerTurnIdsByThreadId.set(activeThreadId, activeTurnId);
-                })
-                .catch((error: unknown) => {
-                  cleanupNotificationHandler();
-                  reject(error);
-                });
-              return;
-            }
-            input.steeringThreads.delete(activeThreadId);
-            cleanupNotificationHandler();
-            resolve();
             return;
           }
         }
@@ -4048,74 +4216,8 @@ async function runAppServerPromptStreamed(input: {
         workspacePath: input.workspacePath,
       });
     }
-    activeTurnId = turn.id;
-    input.activeAppServerTurnIdsByThreadId.set(activeThreadId, activeTurnId);
-    debugStream("start turn complete", activeThreadId, activeTurnId);
-    let streamedReturnedItem = false;
-    for (const item of turn.items) {
-      const canonicalUserMessage = replaceDuplicateInitialUserMessage(
-        input.messagesByThreadId,
-        activeThreadId,
-        activeTurnId,
-        item,
-        userMessage.id,
-        displayPrompt,
-      );
-      if (canonicalUserMessage) {
-        userMessage = canonicalUserMessage;
-        continue;
-      }
-      const message = upsertAppServerItemMessage(
-        input.messagesByThreadId,
-        activeThreadId,
-        activeTurnId,
-        item,
-      );
-      if (!message) {
-        continue;
-      }
-      streamedReturnedItem = true;
-      producedTurnOutput = true;
-      if (message.role === "assistant") {
-        assistantMessageId = message.id;
-      }
-      threadSummary = updateThread(input.threads, input.messagesByThreadId, activeThreadId, {
-        state: "running",
-        lastResult: message.role === "assistant" ? message.content : undefined,
-      });
-      sendSse(input.controller, input.encoder, input.secureSession, {
-        type: message.role === "assistant" ? "thread.message.completed" : "thread.message.created",
-        thread: threadSummary,
-        message,
-      });
-    }
-    const returnedState = mapAppServerThreadState(turn.status);
-    if (returnedState !== "running") {
-      if (!streamedReturnedItem && !producedTurnOutput) {
-        sendEmptyAppServerTurnError({
-          activeTurnId,
-          controller: input.controller,
-          encoder: input.encoder,
-          messagesByThreadId: input.messagesByThreadId,
-          secureSession: input.secureSession,
-          threadId: activeThreadId,
-          threads: input.threads,
-        });
-        input.steeringThreads.delete(activeThreadId);
-        cleanupNotificationHandler();
-        return;
-      }
-      threadSummary = updateThread(input.threads, input.messagesByThreadId, activeThreadId, {
-        state: returnedState,
-      });
-      sendSse(input.controller, input.encoder, input.secureSession, {
-        type: "thread.state.changed",
-        thread: threadSummary,
-      });
-      input.steeringThreads.delete(activeThreadId);
-      cleanupNotificationHandler();
-      return;
-    }
+    debugStream("start turn complete", activeThreadId, turn.id);
+    processReturnedTurn(turn);
     await completed;
   } catch (error) {
     debugStream(`failed ${errorMessage(error)}`, activeThreadId, activeTurnId);
@@ -5484,11 +5586,12 @@ function buildThreadOptions(
   },
 ): Parameters<CodexClient["startThread"]>[0] {
   const runtime = resolveRuntimeOptions(options.runtimeMode);
+  const reasoningEffort = KnownReasoningEffortSchema.safeParse(options.reasoningEffort);
   return {
     ...base,
     ...runtime,
     ...(options.model ? { model: options.model } : {}),
-    ...(options.reasoningEffort ? { modelReasoningEffort: options.reasoningEffort as never } : {}),
+    ...(reasoningEffort.success ? { modelReasoningEffort: reasoningEffort.data } : {}),
     ...(options.approvalPolicy ? { approvalPolicy: options.approvalPolicy as never } : {}),
     ...(options.sandboxMode ? { sandboxMode: options.sandboxMode as never } : {}),
   };
@@ -6597,6 +6700,41 @@ function mapAppServerItem(threadId: string, turn: AppServerTurn, item: AppServer
         },
       });
     }
+    case "collabAgentToolCall": {
+      const collabItem = item as Extract<AppServerThreadItem, { type: "collabAgentToolCall" }>;
+      return ChatMessageSchema.parse({
+        ...base,
+        role: "tool",
+        kind: "subagentAction",
+        content: appServerCollabAgentToolCallContent(collabItem),
+        details: {
+          type: collabItem.type,
+          tool: collabItem.tool,
+          status: collabItem.status,
+          senderThreadId: collabItem.senderThreadId,
+          receiverThreadIds: collabItem.receiverThreadIds,
+          prompt: collabItem.prompt ?? undefined,
+          model: collabItem.model ?? undefined,
+          reasoningEffort: collabItem.reasoningEffort ?? undefined,
+          agentsStates: collabItem.agentsStates,
+        },
+      });
+    }
+    case "subAgentActivity": {
+      const activityItem = item as Extract<AppServerThreadItem, { type: "subAgentActivity" }>;
+      return ChatMessageSchema.parse({
+        ...base,
+        role: "status",
+        kind: "subagentAction",
+        content: `${activityItem.agentPath || activityItem.agentThreadId} ${activityItem.kind}`,
+        details: {
+          type: activityItem.type,
+          activityKind: activityItem.kind,
+          agentThreadId: activityItem.agentThreadId,
+          agentPath: activityItem.agentPath,
+        },
+      });
+    }
     case "webSearch": {
       const searchItem = item as Extract<AppServerThreadItem, { type: "webSearch" }>;
       return ChatMessageSchema.parse({
@@ -6609,6 +6747,25 @@ function mapAppServerItem(threadId: string, turn: AppServerTurn, item: AppServer
     }
     default:
       return mapUnknownAppServerItem(threadId, turn, item);
+  }
+}
+
+function appServerCollabAgentToolCallContent(
+  item: Extract<AppServerThreadItem, { type: "collabAgentToolCall" }>,
+) {
+  const targetCount = item.receiverThreadIds.length;
+  const target = targetCount === 1 ? "subagent" : `${targetCount} subagents`;
+  switch (item.tool) {
+    case "spawnAgent":
+      return targetCount > 0 ? `Spawned ${target}` : "Spawned subagent";
+    case "sendInput":
+      return `Sent input to ${target}`;
+    case "resumeAgent":
+      return `Resumed ${target}`;
+    case "wait":
+      return targetCount > 0 ? `Waited for ${target}` : "Waited for subagents";
+    case "closeAgent":
+      return `Closed ${target}`;
   }
 }
 
@@ -6643,6 +6800,14 @@ function appServerTurnShell(turnId: string | undefined): AppServerTurn {
 }
 
 function mapAppServerModel(model: AppServerModel) {
+  const reasoningEffortOptions =
+    model.supportedReasoningEfforts?.flatMap((effort) => {
+      const parsed = ReasoningEffortSchema.safeParse(effort.reasoningEffort);
+      return parsed.success
+        ? [{ reasoningEffort: parsed.data, description: effort.description }]
+        : [];
+    }) ?? [];
+  const defaultReasoningEffort = ReasoningEffortSchema.safeParse(model.defaultReasoningEffort);
   const serviceTiers =
     model.serviceTiers ??
     model.additionalSpeedTiers?.map((tier) => ({
@@ -6657,9 +6822,11 @@ function mapAppServerModel(model: AppServerModel) {
     displayName: model.displayName,
     description: model.description,
     isDefault: Boolean(model.isDefault),
-    defaultReasoningEffort: model.defaultReasoningEffort,
-    supportedReasoningEfforts:
-      model.supportedReasoningEfforts?.map((effort) => effort.reasoningEffort) ?? [],
+    defaultReasoningEffort: defaultReasoningEffort.success
+      ? defaultReasoningEffort.data
+      : undefined,
+    supportedReasoningEfforts: reasoningEffortOptions.map((effort) => effort.reasoningEffort),
+    reasoningEffortOptions,
     serviceTiers,
   };
 }
@@ -7276,6 +7443,10 @@ function kindFromProtocolType(type: string | undefined) {
       return "approvalRequest";
     case "subagent_action":
     case "subagentAction":
+    case "collab_agent_tool_call":
+    case "collabAgentToolCall":
+    case "sub_agent_activity":
+    case "subAgentActivity":
       return "subagentAction";
     default:
       return undefined;

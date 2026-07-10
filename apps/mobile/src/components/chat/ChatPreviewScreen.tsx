@@ -1,6 +1,5 @@
 import type {
   ChatMessage,
-  CodexModel,
   ContextWindowUsage,
   RateLimitBucket,
   ReasoningEffort,
@@ -15,27 +14,11 @@ import { getComposerDraft, setComposerDraft } from "@/state/chat-store";
 
 import { ChatControls } from "./ChatControls";
 import { ChatShell } from "./ChatShell";
+import { previewModels } from "./chat-preview-models";
+import { reasoningEffortForModel } from "./model-picker-options";
 
 const PREVIEW_THREAD_ID = "chat-preview";
 const PREVIEW_INPUT_NATIVE_ID = "chat-preview-composer-input";
-
-const previewModels: CodexModel[] = [
-  {
-    defaultReasoningEffort: "medium",
-    displayName: "GPT-5.5",
-    id: "gpt-5.5",
-    isDefault: true,
-    model: "gpt-5.5",
-    serviceTiers: [
-      {
-        id: "priority",
-        name: "Fast",
-        description: "1.5x speed, increased usage",
-      },
-    ],
-    supportedReasoningEfforts: ["low", "medium", "high", "xhigh"],
-  },
-];
 
 const previewContextUsage: ContextWindowUsage = {
   tokenLimit: 200000,
@@ -68,12 +51,23 @@ export function ChatPreviewScreen() {
   const [runtimeMode, setRuntimeMode] = useState<RuntimeMode>("default");
   const [collaborationMode, setCollaborationMode] = useState<ThreadCollaborationMode>("default");
   const composerFocusRequestKey = 0;
-  const [selectedModel, setSelectedModel] = useState(previewModels[0]?.model);
+  const [selectedModel, setSelectedModel] = useState("gpt-5.6-sol");
   const [selectedReasoningEffort, setSelectedReasoningEffort] = useState<
     ReasoningEffort | undefined
   >("medium");
   const [selectedServiceTier, setSelectedServiceTier] = useState<string | undefined>();
   const commandCount = useMemo(() => commandList().length, []);
+  const isPreviewRunning = messages.some(
+    (message) => message.kind === "plan" && message.role === "status",
+  );
+
+  function changePreviewModel(model: string, reasoningEffort?: ReasoningEffort) {
+    const nextModel = previewModels.find((candidate) => candidate.model === model);
+    setSelectedModel(model);
+    setSelectedReasoningEffort(
+      reasoningEffortForModel(nextModel, reasoningEffort ?? selectedReasoningEffort),
+    );
+  }
 
   function sendPreviewPrompt(promptOverride?: string) {
     const isDraftPrompt = promptOverride === undefined;
@@ -126,7 +120,7 @@ export function ChatPreviewScreen() {
           selectedReasoningEffort={selectedReasoningEffort}
           selectedServiceTier={selectedServiceTier}
           onRuntimeModeChange={setRuntimeMode}
-          onSelectedModelChange={setSelectedModel}
+          onSelectedModelChange={changePreviewModel}
           onSelectedReasoningEffortChange={setSelectedReasoningEffort}
           onSelectedServiceTierChange={setSelectedServiceTier}
         />
@@ -134,7 +128,7 @@ export function ChatPreviewScreen() {
       contextWindowUsage={previewContextUsage}
       inputNativeID={PREVIEW_INPUT_NATIVE_ID}
       isAttachingImage={false}
-      isRunning={false}
+      isRunning={isPreviewRunning}
       leadingAction={{
         icon: "closeMenu",
         label: "Back to chat",
@@ -173,7 +167,7 @@ function initialPreviewMessages() {
   return [
     previewMessage({
       content:
-        "Type `/approval`, `/input`, `/tools`, `/plan`, `/code`, `/diff`, `/error`, or `/all` to render canned chat components.",
+        "Type `/approval`, `/input`, `/tools`, `/plan`, `/agents`, `/code`, `/diff`, `/error`, or `/all` to render canned chat components.",
       id: "preview-welcome",
       role: "assistant",
     }),
@@ -181,7 +175,7 @@ function initialPreviewMessages() {
 }
 
 function commandList() {
-  return ["/approval", "/input", "/tools", "/plan", "/code", "/diff", "/error", "/all"];
+  return ["/approval", "/input", "/tools", "/plan", "/agents", "/code", "/diff", "/error", "/all"];
 }
 
 function messagesForCommand(prompt: string) {
@@ -208,6 +202,9 @@ function messagesForCommand(prompt: string) {
   }
   if (normalized === "/plan") {
     return planFixture();
+  }
+  if (normalized === "/agents") {
+    return subagentPlanFixture();
   }
   if (normalized === "/code") {
     return codeFixture();
@@ -357,6 +354,59 @@ function planFixture() {
       id: `plan-${Date.now()}`,
       kind: "plan",
       role: "status",
+    }),
+  ];
+}
+
+function subagentPlanFixture() {
+  const stamp = Date.now();
+  const turnId = `preview-agents-${stamp}`;
+  return [
+    previewMessage({
+      content: "Preview plan updated with subagents.",
+      details: {
+        plan: [
+          { status: "completed", step: "Map the current component tree" },
+          { status: "in_progress", step: "Review compact subagent status" },
+          { status: "pending", step: "Verify the expanded plan layout" },
+        ],
+      },
+      id: `plan-agents-${stamp}`,
+      kind: "plan",
+      role: "status",
+      turnId,
+    }),
+    previewMessage({
+      content: "Spawned 4 subagents",
+      details: {
+        agentsStates: {
+          "agent-a": { message: null, status: "running" },
+          "agent-b": { message: null, status: "completed" },
+          "agent-c": { message: null, status: "completed" },
+          "agent-d": { message: "Fixture failure", status: "failed" },
+        },
+        receiverThreadIds: ["agent-a", "agent-b", "agent-c", "agent-d"],
+        status: "completed",
+        tool: "spawnAgent",
+        type: "collabAgentToolCall",
+      },
+      id: `spawn-agents-${stamp}`,
+      kind: "subagentAction",
+      role: "tool",
+      turnId,
+    }),
+    previewMessage({
+      content: "component-reviewer started",
+      details: {
+        activityKind: "started",
+        agentPath: "component-reviewer",
+        agentThreadId: "agent-a",
+        type: "subAgentActivity",
+      },
+      id: `agent-started-${stamp}`,
+      kind: "subagentAction",
+      role: "status",
+      turnId,
     }),
   ];
 }

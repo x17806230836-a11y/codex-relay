@@ -1,5 +1,4 @@
 import {
-  RuntimePreferencesByWorkspacePathSchema,
   RuntimePreferencesSchema,
   UpdateRuntimePreferencesRequestSchema,
   type RuntimePreferences,
@@ -11,9 +10,12 @@ import { dirname } from "node:path";
 import { z } from "zod";
 
 const defaultRuntimePreferences: RuntimePreferences = { runtimeMode: "default" };
+const PersistedRuntimePreferencesSchema = RuntimePreferencesSchema;
 const RuntimePreferencesFileSchema = z.object({
-  preferences: RuntimePreferencesSchema.default(defaultRuntimePreferences),
-  runtimePreferencesByWorkspacePath: RuntimePreferencesByWorkspacePathSchema.default({}),
+  preferences: PersistedRuntimePreferencesSchema.default(defaultRuntimePreferences),
+  runtimePreferencesByWorkspacePath: z
+    .record(z.string().trim().min(1), PersistedRuntimePreferencesSchema)
+    .default({}),
 });
 
 type RuntimePreferencesFile = z.infer<typeof RuntimePreferencesFileSchema>;
@@ -53,6 +55,8 @@ export function createMemoryRuntimePreferencesStore(
 }
 
 export function createFileRuntimePreferencesStore(path: string): RuntimePreferencesStore {
+  let updateQueue = Promise.resolve();
+
   async function readPreferences() {
     try {
       return parseRuntimePreferencesFile(JSON.parse(await readFile(path, "utf8")));
@@ -63,21 +67,30 @@ export function createFileRuntimePreferencesStore(path: string): RuntimePreferen
 
   return {
     async read(workspacePath) {
+      await updateQueue;
       const current = await readPreferences();
       return workspacePath
         ? (current.runtimePreferencesByWorkspacePath[workspacePath] ?? current.preferences)
         : current.preferences;
     },
     async readByWorkspacePath() {
+      await updateQueue;
       return (await readPreferences()).runtimePreferencesByWorkspacePath;
     },
-    async update(preferences, workspacePath) {
-      const next = updatePreferencesFile(await readPreferences(), preferences, workspacePath);
-      await mkdir(dirname(path), { recursive: true });
-      await writeFile(path, `${JSON.stringify(next, null, 2)}\n`, { mode: 0o600 });
-      return workspacePath
-        ? (next.runtimePreferencesByWorkspacePath[workspacePath] ?? next.preferences)
-        : next.preferences;
+    update(preferences, workspacePath) {
+      const operation = updateQueue.then(async () => {
+        const next = updatePreferencesFile(await readPreferences(), preferences, workspacePath);
+        await mkdir(dirname(path), { recursive: true });
+        await writeFile(path, `${JSON.stringify(next, null, 2)}\n`, { mode: 0o600 });
+        return workspacePath
+          ? (next.runtimePreferencesByWorkspacePath[workspacePath] ?? next.preferences)
+          : next.preferences;
+      });
+      updateQueue = operation.then(
+        () => undefined,
+        () => undefined,
+      );
+      return operation;
     },
   };
 }
@@ -90,7 +103,7 @@ function parseRuntimePreferencesFile(payload: unknown) {
     }
   }
 
-  const legacyPreferences = RuntimePreferencesSchema.safeParse(payload);
+  const legacyPreferences = PersistedRuntimePreferencesSchema.safeParse(payload);
   if (legacyPreferences.success) {
     return RuntimePreferencesFileSchema.parse({
       preferences: legacyPreferences.data,
