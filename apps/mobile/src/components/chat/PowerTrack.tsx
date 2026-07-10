@@ -59,17 +59,17 @@ const SPARKLES = [
 ] as const;
 
 export function PowerTrack({
+  accessibilityValueLabel,
   onCommitIndex,
   onCrossIndex,
   selectedIndex,
   selectionCount,
-  selectedLabel,
 }: {
+  accessibilityValueLabel: string;
   onCommitIndex: (index: number) => void;
   onCrossIndex: (index: number) => void;
   selectedIndex: number;
   selectionCount: number;
-  selectedLabel: string;
 }) {
   const theme = useTheme();
   const reduceMotion = useReducedMotion();
@@ -294,7 +294,7 @@ export function PowerTrack({
           max: selectionCount,
           min: 1,
           now: selectedIndex + 1,
-          text: selectedLabel,
+          text: accessibilityValueLabel,
         }}
         onAccessibilityAction={handleAccessibilityAction}
         onLayout={handleLayout}

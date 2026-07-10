@@ -8,7 +8,11 @@ import { Fonts, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import { hapticLightImpact, hapticMediumImpact, hapticSelection } from "@/lib/haptics";
 
-import { powerSelectionLabel, type PowerSelection } from "./model-picker-options";
+import {
+  powerSelectionAccessibilityLabel,
+  powerSelectionLabel,
+  type PowerSelection,
+} from "./model-picker-options";
 import { powerHapticKind, type PowerHapticKind } from "./power-selector-geometry";
 import { FastToggle } from "./FastToggle";
 import { PowerTrack } from "./PowerTrack";
@@ -38,6 +42,9 @@ export function PowerSelector({
   const [previewIndex, setPreviewIndex] = useState<number>();
   const displayedSelection = previewIndex === undefined ? selected : selections[previewIndex];
   const selectedLabel = displayedSelection ? powerSelectionLabel(displayedSelection) : "Custom";
+  const accessibilityValueLabel = displayedSelection
+    ? powerSelectionAccessibilityLabel(displayedSelection)
+    : "Custom";
   const lastSelectionIdRef = useRef(selected?.id);
 
   useEffect(() => {
@@ -97,17 +104,17 @@ export function PowerSelector({
         </View>
 
         <PowerTrack
+          accessibilityValueLabel={accessibilityValueLabel}
           onCommitIndex={commitIndex}
           onCrossIndex={crossIndex}
           selectedIndex={selectedIndex}
-          selectedLabel={selectedLabel}
           selectionCount={selections.length}
         />
       </View>
 
       <Pressable
         accessibilityHint="Shows model, reasoning, and speed controls"
-        accessibilityLabel={`${selectedLabel}, Advanced options`}
+        accessibilityLabel={`${accessibilityValueLabel}, Advanced options`}
         accessibilityRole="button"
         onPress={() => {
           hapticSelection();

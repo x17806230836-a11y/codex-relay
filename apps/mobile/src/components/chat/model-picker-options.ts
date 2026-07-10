@@ -1,9 +1,4 @@
-import type {
-  CodexModel,
-  KnownReasoningEffort,
-  ReasoningEffort,
-  RuntimePreferences,
-} from "codex-relay/api-schema";
+import type { CodexModel, ReasoningEffort, RuntimePreferences } from "codex-relay/api-schema";
 
 export type ModelPickerOption<Value extends string = string> = {
   label: string;
@@ -42,8 +37,6 @@ export function modelPickerSheetPresentation(showAdvanced: boolean, hasCompactPo
       };
 }
 
-type PowerSelectionCandidate = Omit<PowerSelection, "powerSettingIndex">;
-
 const genericReasoningEfforts: ReasoningEffort[] = [
   "minimal",
   "low",
@@ -52,16 +45,7 @@ const genericReasoningEfforts: ReasoningEffort[] = [
   "xhigh",
   "max",
 ];
-const reasoningTitles = new Map<KnownReasoningEffort, string>([
-  ["minimal", "Minimal"],
-  ["low", "Light"],
-  ["medium", "Medium"],
-  ["high", "High"],
-  ["xhigh", "Extra High"],
-  ["max", "Custom"],
-  ["ultra", "Ultra"],
-]);
-const reasoningSubtitles = new Map<KnownReasoningEffort, string>([
+const reasoningSubtitles = new Map<ReasoningEffort, string>([
   ["minimal", "Minimal reasoning for the fastest replies"],
   ["low", "Fast replies with light reasoning"],
   ["medium", "Balanced reasoning for everyday work"],
@@ -71,30 +55,21 @@ const reasoningSubtitles = new Map<KnownReasoningEffort, string>([
   ["ultra", "Maximum reasoning with automatic task delegation"],
 ]);
 
-const primaryPowerSelections: PowerSelectionCandidate[] = [
-  powerSelection("gpt-5.6-terra", "5.6 Terra", "low"),
-  powerSelection("gpt-5.6-sol", "5.6 Sol", "low"),
-  powerSelection("gpt-5.6-sol", "5.6 Sol", "medium"),
-  powerSelection("gpt-5.6-sol", "5.6 Sol", "high"),
-  powerSelection("gpt-5.6-sol", "5.6 Sol", "xhigh"),
-  powerSelection("gpt-5.6-sol", "5.6 Sol", "ultra"),
-];
-
-const terraPowerSelections: PowerSelectionCandidate[] = [
-  powerSelection("gpt-5.6-terra", "5.6 Terra", "low"),
-  powerSelection("gpt-5.6-terra", "5.6 Terra", "medium"),
-  powerSelection("gpt-5.6-terra", "5.6 Terra", "high"),
-  powerSelection("gpt-5.6-terra", "5.6 Terra", "xhigh"),
-];
-
 export function powerSelectionsForModels(models: CodexModel[]) {
-  const primary = supportedPowerSelections(primaryPowerSelections, models);
-  if (primary.length >= 4) {
-    return primary;
+  const model =
+    models.find((candidate) => candidate.isDefault && hasCompactPower(candidate)) ??
+    models.find(hasCompactPower);
+  if (!model) {
+    return [];
   }
 
-  const terra = supportedPowerSelections(terraPowerSelections, models);
-  return terra.length >= 4 ? terra : [];
+  return model.supportedReasoningEfforts.map((reasoningEffort, powerSettingIndex) => ({
+    id: `${model.model}:${reasoningEffort}`,
+    model: model.model,
+    modelLabel: model.displayName,
+    powerSettingIndex,
+    reasoningEffort,
+  }));
 }
 
 export function selectedPowerSelection(
@@ -112,7 +87,11 @@ export function defaultPowerSelection(selections: PowerSelection[]) {
 }
 
 export function powerSelectionLabel(selection: PowerSelection) {
-  return `${selection.modelLabel} ${powerReasoningTitle(selection.reasoningEffort)}`;
+  return reasoningTitle(selection.reasoningEffort);
+}
+
+export function powerSelectionAccessibilityLabel(selection: PowerSelection) {
+  return `${selection.modelLabel} ${powerSelectionLabel(selection)}`;
 }
 
 export function modelButtonLabel(
@@ -179,17 +158,15 @@ export function reasoningDisplayOptions(
 ): ModelPickerOption<ReasoningEffort>[] {
   const efforts =
     model?.supportedReasoningEfforts ?? (useGenericFallback ? genericReasoningEfforts : []);
-  return efforts
-    .filter((effort) => effort !== "max")
-    .map((effort) => ({
-      label: reasoningTitle(effort),
-      subtitle:
-        effort === "ultra"
-          ? "Consumes usage limits faster"
-          : (model?.reasoningEffortOptions.find((option) => option.reasoningEffort === effort)
-              ?.description ?? reasoningSubtitle(effort)),
-      value: effort,
-    }));
+  return efforts.map((effort) => ({
+    label: reasoningTitle(effort),
+    subtitle:
+      effort === "ultra"
+        ? "Consumes usage limits faster"
+        : (model?.reasoningEffortOptions.find((option) => option.reasoningEffort === effort)
+            ?.description ?? reasoningSubtitle(effort)),
+    value: effort,
+  }));
 }
 
 export function speedDisplayOptions(
@@ -228,52 +205,19 @@ export function shortModelLabel(model: CodexModel | undefined, fallback?: string
 }
 
 export function reasoningTitle(effort: ReasoningEffort) {
-  return (
-    reasoningTitles.get(effort as KnownReasoningEffort) ??
-    effort
-      .split(/[-_\s]+/u)
-      .filter(Boolean)
-      .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
-      .join(" ")
-  );
-}
-
-function powerReasoningTitle(effort: ReasoningEffort) {
-  switch (effort) {
-    case "medium":
-      return "Standard";
-    case "high":
-      return "Extended";
-    default:
-      return reasoningTitle(effort);
-  }
+  const title = effort
+    .replace(/^x[-_\s]*(?=high(?:[-_\s]|$))/u, "extra-")
+    .split(/[-_\s]+/u)
+    .filter(Boolean)
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
+  return title || effort;
 }
 
 function reasoningSubtitle(effort: ReasoningEffort) {
-  return (
-    reasoningSubtitles.get(effort as KnownReasoningEffort) ??
-    `Use ${reasoningTitle(effort)} reasoning`
-  );
+  return reasoningSubtitles.get(effort) ?? `Use ${reasoningTitle(effort)} reasoning`;
 }
 
-function powerSelection(
-  model: string,
-  modelLabel: string,
-  reasoningEffort: ReasoningEffort,
-): PowerSelectionCandidate {
-  return {
-    id: `${model}:${reasoningEffort}`,
-    model,
-    modelLabel,
-    reasoningEffort,
-  };
-}
-
-function supportedPowerSelections(candidates: PowerSelectionCandidate[], models: CodexModel[]) {
-  return candidates.flatMap((candidate, powerSettingIndex) => {
-    const model = models.find((item) => item.model === candidate.model);
-    return model?.supportedReasoningEfforts.includes(candidate.reasoningEffort)
-      ? [{ ...candidate, powerSettingIndex }]
-      : [];
-  });
+function hasCompactPower(model: CodexModel) {
+  return model.supportedReasoningEfforts.length >= 4;
 }

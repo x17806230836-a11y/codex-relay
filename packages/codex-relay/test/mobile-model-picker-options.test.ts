@@ -6,6 +6,8 @@ import {
   modelButtonLabel,
   modelForSelection,
   normalizeRuntimePreferencesForModels,
+  powerSelectionAccessibilityLabel,
+  powerSelectionLabel,
   powerSelectionsForModels,
   reasoningDisplayOptions,
   reasoningEffortForModel,
@@ -64,65 +66,86 @@ describe("mobile model picker options", () => {
     });
   });
 
-  it("builds the current compact Power progression", () => {
-    expect(powerSelectionsForModels(models)).toEqual([
-      {
-        id: "gpt-5.6-terra:low",
-        model: "gpt-5.6-terra",
-        modelLabel: "5.6 Terra",
-        powerSettingIndex: 0,
-        reasoningEffort: "low",
-      },
+  it("builds Power from the catalog default model in source order", () => {
+    const futureModel = model({
+      id: "future-model",
+      displayName: "Future Model",
+      defaultReasoningEffort: "medium",
+      efforts: ["low", "medium", "high", "xhigh", "max", "ultra", "future"],
+    });
+    const selections = powerSelectionsForModels([futureModel, ...models]);
+
+    expect(selections).toEqual([
       {
         id: "gpt-5.6-sol:low",
         model: "gpt-5.6-sol",
-        modelLabel: "5.6 Sol",
-        powerSettingIndex: 1,
+        modelLabel: "GPT-5.6-Sol",
+        powerSettingIndex: 0,
         reasoningEffort: "low",
       },
       {
         id: "gpt-5.6-sol:medium",
         model: "gpt-5.6-sol",
-        modelLabel: "5.6 Sol",
-        powerSettingIndex: 2,
+        modelLabel: "GPT-5.6-Sol",
+        powerSettingIndex: 1,
         reasoningEffort: "medium",
       },
       {
         id: "gpt-5.6-sol:high",
         model: "gpt-5.6-sol",
-        modelLabel: "5.6 Sol",
-        powerSettingIndex: 3,
+        modelLabel: "GPT-5.6-Sol",
+        powerSettingIndex: 2,
         reasoningEffort: "high",
       },
       {
         id: "gpt-5.6-sol:xhigh",
         model: "gpt-5.6-sol",
-        modelLabel: "5.6 Sol",
-        powerSettingIndex: 4,
+        modelLabel: "GPT-5.6-Sol",
+        powerSettingIndex: 3,
         reasoningEffort: "xhigh",
+      },
+      {
+        id: "gpt-5.6-sol:max",
+        model: "gpt-5.6-sol",
+        modelLabel: "GPT-5.6-Sol",
+        powerSettingIndex: 4,
+        reasoningEffort: "max",
       },
       {
         id: "gpt-5.6-sol:ultra",
         model: "gpt-5.6-sol",
-        modelLabel: "5.6 Sol",
+        modelLabel: "GPT-5.6-Sol",
         powerSettingIndex: 5,
         reasoningEffort: "ultra",
       },
     ]);
+    expect(selections.map(powerSelectionLabel)).toEqual([
+      "Low",
+      "Medium",
+      "High",
+      "Extra High",
+      "Max",
+      "Ultra",
+    ]);
+    expect(selections.map(powerSelectionAccessibilityLabel)).toEqual([
+      "GPT-5.6-Sol Low",
+      "GPT-5.6-Sol Medium",
+      "GPT-5.6-Sol High",
+      "GPT-5.6-Sol Extra High",
+      "GPT-5.6-Sol Max",
+      "GPT-5.6-Sol Ultra",
+    ]);
   });
 
-  it("hides Max from Advanced while retaining transport compatibility", () => {
-    const luna = models[2];
-
-    expect(reasoningDisplayOptions(luna)).toEqual([
-      { label: "Light", subtitle: "low description", value: "low" },
+  it("shows every source-provided effort in Advanced", () => {
+    expect(reasoningDisplayOptions(models[0])).toEqual([
+      { label: "Low", subtitle: "low description", value: "low" },
       { label: "Medium", subtitle: "medium description", value: "medium" },
       { label: "High", subtitle: "high description", value: "high" },
       { label: "Extra High", subtitle: "xhigh description", value: "xhigh" },
+      { label: "Max", subtitle: "max description", value: "max" },
+      { label: "Ultra", subtitle: "Consumes usage limits faster", value: "ultra" },
     ]);
-    expect(
-      models.flatMap((model) => reasoningDisplayOptions(model)).map((option) => option.value),
-    ).not.toContain("max");
     expect(
       normalizeRuntimePreferencesForModels(models, {
         model: "gpt-5.6-sol",
@@ -133,9 +156,6 @@ describe("mobile model picker options", () => {
       model: "gpt-5.6-sol",
       reasoningEffort: "max",
     });
-    expect(
-      powerSelectionsForModels(models).some((selection) => selection.model === luna.model),
-    ).toBe(false);
   });
 
   it("preserves a compatible effort and falls back to the model default otherwise", () => {
@@ -168,6 +188,7 @@ describe("mobile model picker options", () => {
       "medium",
       "high",
       "xhigh",
+      "max",
     ]);
     expect(speedDisplayOptions(undefined, "priority")).toEqual([
       {
@@ -192,15 +213,18 @@ describe("mobile model picker options", () => {
     expect(modelButtonLabel(undefined, "high", "custom-model")).toBe("custom-model High");
   });
 
-  it("does not expose Max for a stored transport value", () => {
-    expect(modelButtonLabel(models[0], "max")).toBe("GPT-5.6-Sol Custom");
-    expect(reasoningTitle("max")).toBe("Custom");
+  it("uses the source title for a stored Max value", () => {
+    expect(modelButtonLabel(models[0], "max")).toBe("GPT-5.6-Sol Max");
+    expect(reasoningTitle("max")).toBe("Max");
   });
 
   it("formats opaque reasoning values without prototype-key collisions", () => {
     expect(reasoningTitle("__proto__")).toBe("Proto");
     expect(reasoningTitle("constructor")).toBe("Constructor");
     expect(reasoningTitle("toString")).toBe("ToString");
+    expect(reasoningTitle("---")).toBe("---");
+    expect(reasoningTitle("___")).toBe("___");
+    expect(reasoningTitle("x-high")).toBe("Extra High");
   });
 
   it("uses the catalog default without masking unknown models", () => {

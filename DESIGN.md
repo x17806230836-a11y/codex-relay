@@ -139,13 +139,14 @@ All spacing derives from the existing `Spacing` constants.
   (`Advanced` and a labeled Fast switch) plus a 44px gesture region. The Fast
   switch uses one touch target containing a lightning glyph, visible label, and
   a deterministic track/thumb; it must never collapse to an icon-only action.
-- **Track**: 26px capsule with a 30px white thumb and six discrete stops. The
-  inactive segment uses `powerTrack`; the revealed segment runs
+- **Track**: 26px capsule with a 30px white thumb and one discrete stop per
+  source-provided Power effort; the current canonical catalog provides six.
+  The inactive segment uses `powerTrack`; the revealed segment runs
   `powerBlue → powerViolet → powerMagenta` without compressing the gradient.
-- **Progressive material**: stops through Extra High remain clean blue; the
-  Extra High → Ultra transition smoothly reveals violet, magenta, rim light,
-  and the densest sparkle field. Six stop dots remain visible across both the
-  active and inactive track.
+- **Progressive material**: canonical stops through Max remain clean blue; the
+  Max → Ultra transition smoothly reveals violet, magenta, rim light, and the
+  densest sparkle field. Every source-provided stop dot remains visible across
+  both the active and inactive track.
 - **Interaction**: horizontal drag follows the finger continuously through a
   shallow magnetic well around every supported Power stop. A regular tap travels
   through those same wells stop by stop instead of jumping directly to its target.
@@ -165,11 +166,14 @@ All spacing derives from the existing `Spacing` constants.
   a short Reanimated thumb transition to communicate state; reduced-motion
   applies the final switch state immediately.
 - **Forward compatibility**: model, reasoning, and speed values from the relay
-  remain non-empty opaque strings in catalog and preference storage. Known
-  values receive richer labels and controls. The relay-only `max` effort remains
-  transport-compatible but is not a user-facing Advanced choice; Power moves
-  directly from Extra High to Ultra. Only the legacy SDK launch boundary narrows
-  reasoning to the SDK's currently supported set.
+  remain non-empty opaque strings in catalog and preference storage. Compact
+  Power projects the first eligible default catalog model, falling back to the
+  first eligible source model, and preserves its effort order without a local
+  model/effort candidate table. Advanced preserves the selected model's source
+  order. Visible effort labels are derived from opaque IDs (`xhigh` becomes
+  `Extra High`) and never collapse to blank; the spoken Power value keeps the
+  catalog model plus effort. `Max` remains user-facing in both surfaces. Only
+  the legacy SDK launch boundary narrows reasoning to the SDK's supported set.
 - **Advanced return path**: whenever compact Power is available, Advanced shows
   a 44px header back action that returns to the gesture/detent control without
   closing the sheet. A valid Power selection is preserved; an opaque custom
