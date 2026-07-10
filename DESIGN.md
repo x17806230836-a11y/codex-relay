@@ -116,7 +116,9 @@ All spacing derives from the existing `Spacing` constants.
   `Subagents` summary row below the plan steps. Show at most four distinct,
   decorative identity glyphs while preserving the full detected count in text
   and accessibility labels. Glyph shape and color are assigned by visible agent
-  order and never encode running, completed, interrupted, or failed state.
+  order and never encode running, completed, interrupted, or failed state. The
+  expanded status copy may wrap to two lines on compact widths so no supported
+  status total is lost to truncation.
 - **Scope**: only activity associated with the current plan turn is summarized.
   Subagent messages without an active plan, and activity from earlier turns,
   remain in the timeline so operational history is not lost.

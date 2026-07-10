@@ -133,7 +133,7 @@ export function PlanProgressBanner({
               </View>
               <View style={styles.subagentSummaryRow}>
                 <SubagentGlyphs agents={subagents.agents} />
-                <ThemedText type="code" numberOfLines={1} style={styles.subagentStatusText}>
+                <ThemedText type="code" numberOfLines={2} style={styles.subagentStatusText}>
                   {subagentText}
                 </ThemedText>
               </View>
@@ -393,6 +393,7 @@ const styles = StyleSheet.create({
     color: Colors.dark.textSecondary,
     flex: 1,
     fontSize: 10,
+    lineHeight: 14,
   },
   subagentSummaryRow: {
     alignItems: "center",
