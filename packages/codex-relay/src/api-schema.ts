@@ -179,6 +179,36 @@ export const RateLimitsResponseSchema = z.object({
   buckets: z.array(RateLimitBucketSchema),
 });
 
+export const UserSchema = z.object({
+  id: z.string().min(1),
+  email: z.string().email(),
+  name: z.string().trim().min(1),
+  role: z.enum(["admin", "user", "guest"]).default("user"),
+  createdAt: IsoDateTimeSchema,
+  updatedAt: IsoDateTimeSchema,
+});
+
+export const CreateUserRequestSchema = z.object({
+  email: z.string().email(),
+  name: z.string().trim().min(1),
+  role: z.enum(["admin", "user", "guest"]).optional(),
+});
+
+export const UpdateUserRequestSchema = z.object({
+  email: z.string().email().optional(),
+  name: z.string().trim().min(1).optional(),
+  role: z.enum(["admin", "user", "guest"]).optional(),
+});
+
+export const UserResponseSchema = z.object({
+  user: UserSchema,
+});
+
+export const ListUsersResponseSchema = z.object({
+  users: z.array(UserSchema),
+  total: z.number().int().nonnegative(),
+});
+
 export const ThreadContextWindowResponseSchema = z.object({
   threadId: z.string().min(1),
   usage: ContextWindowUsageSchema.nullable(),
@@ -1050,6 +1080,11 @@ export type StreamThreadRunEvent = z.infer<typeof StreamThreadRunEventSchema>;
 export type UpdateWorkspaceFileContentRequest = z.infer<
   typeof UpdateWorkspaceFileContentRequestSchema
 >;
+export type User = z.infer<typeof UserSchema>;
+export type CreateUserRequest = z.infer<typeof CreateUserRequestSchema>;
+export type UpdateUserRequest = z.infer<typeof UpdateUserRequestSchema>;
+export type UserResponse = z.infer<typeof UserResponseSchema>;
+export type ListUsersResponse = z.infer<typeof ListUsersResponseSchema>;
 
 export const apiPaths = {
   version: "/version",
@@ -1064,6 +1099,8 @@ export const apiPaths = {
   rateLimits: "/v1/rate-limits",
   models: "/v1/models",
   skills: "/v1/skills",
+  users: "/v1/users",
+  user: (userId: string) => `/v1/users/${encodeURIComponent(userId)}`,
   workspaceFiles: "/v1/workspace/files",
   workspaceFileContent: "/v1/workspace/file",
   workspaceDirectories: "/v1/workspace-directories",
